@@ -1,0 +1,149 @@
+{
+  "_metadata": {
+    "notice": "SYNTHETIC TEST ONLY - NOT FOR RESEARCH USE - FOR UNIT TESTING PIPELINE ONLY",
+    "description": "Minimal synthetic fixture for pipeline contract and validation unit tests",
+    "sample_count": 10
+  },
+  "records": [
+    {
+      "sample_id": "SYNTH-001",
+      "label": 0,
+      "family_id": "benign_explorer",
+      "trace_id": "trace-A",
+      "timestamp": "2026-01-01T10:00:00Z",
+      "features": {
+        "f_entropy": 4.12,
+        "f_write_burst": 2,
+        "f_rename_count": 0,
+        "f_ext_change": 0,
+        "f_network_bytes": 1024
+      }
+    },
+    {
+      "sample_id": "SYNTH-002",
+      "label": 0,
+      "family_id": "benign_backup",
+      "trace_id": "trace-A",
+      "timestamp": "2026-01-01T10:00:05Z",
+      "features": {
+        "f_entropy": 5.01,
+        "f_write_burst": 15,
+        "f_rename_count": 1,
+        "f_ext_change": 0,
+        "f_network_bytes": 20480
+      }
+    },
+    {
+      "sample_id": "SYNTH-003",
+      "label": 0,
+      "family_id": "benign_compilation",
+      "trace_id": "trace-B",
+      "timestamp": "2026-01-01T10:01:00Z",
+      "features": {
+        "f_entropy": 6.10,
+        "f_write_burst": 45,
+        "f_rename_count": 5,
+        "f_ext_change": 0,
+        "f_network_bytes": 512
+      }
+    },
+    {
+      "sample_id": "SYNTH-004",
+      "label": 0,
+      "family_id": "benign_browser",
+      "trace_id": "trace-B",
+      "timestamp": "2026-01-01T10:01:10Z",
+      "features": {
+        "f_entropy": 4.85,
+        "f_write_burst": 8,
+        "f_rename_count": 0,
+        "f_ext_change": 0,
+        "f_network_bytes": 1048576
+      }
+    },
+    {
+      "sample_id": "SYNTH-005",
+      "label": 0,
+      "family_id": "benign_office",
+      "trace_id": "trace-C",
+      "timestamp": "2026-01-01T10:02:00Z",
+      "features": {
+        "f_entropy": 5.40,
+        "f_write_burst": 4,
+        "f_rename_count": 2,
+        "f_ext_change": 0,
+        "f_network_bytes": 4096
+      }
+    },
+    {
+      "sample_id": "SYNTH-006",
+      "label": 1,
+      "family_id": "synth_locky",
+      "trace_id": "trace-D",
+      "timestamp": "2026-01-01T11:00:00Z",
+      "features": {
+        "f_entropy": 7.92,
+        "f_write_burst": 350,
+        "f_rename_count": 120,
+        "f_ext_change": 120,
+        "f_network_bytes": 8192
+      }
+    },
+    {
+      "sample_id": "SYNTH-007",
+      "label": 1,
+      "family_id": "synth_locky",
+      "trace_id": "trace-D",
+      "timestamp": "2026-01-01T11:00:05Z",
+      "features": {
+        "f_entropy": 7.95,
+        "f_write_burst": 420,
+        "f_rename_count": 180,
+        "f_ext_change": 180,
+        "f_network_bytes": 4096
+      }
+    },
+    {
+      "sample_id": "SYNTH-008",
+      "label": 1,
+      "family_id": "synth_wannacry",
+      "trace_id": "trace-E",
+      "timestamp": "2026-01-01T11:05:00Z",
+      "features": {
+        "f_entropy": 7.88,
+        "f_write_burst": 510,
+        "f_rename_count": 250,
+        "f_ext_change": 250,
+        "f_network_bytes": 65536
+      }
+    },
+    {
+      "sample_id": "SYNTH-009",
+      "label": 1,
+      "family_id": "synth_wannacry",
+      "trace_id": "trace-E",
+      "timestamp": "2026-01-01T11:05:10Z",
+      "features": {
+        "f_entropy": 7.91,
+        "f_write_burst": 480,
+        "f_rename_count": 210,
+        "f_ext_change": 210,
+        "f_network_bytes": 32768
+      }
+    },
+    {
+      "sample_id": "SYNTH-010",
+      "label": 1,
+      "family_id": "synth_ryuk",
+      "trace_id": "trace-F",
+      "timestamp": "2026-01-01T11:10:00Z",
+      "features": {
+        "f_entropy": 7.96,
+        "f_write_burst": 600,
+        "f_rename_count": 310,
+        "f_ext_change": 310,
+        "f_network_bytes": 16384
+      }
+    }
+  ]
+}

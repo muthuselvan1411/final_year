@@ -1,0 +1,42 @@
+# Baseline Experiment Configuration (B0 - B4 ladder)
+run_id: "B-RUN-01"
+purpose: "Evaluate frozen baseline detector outputs without EADL"
+seed: 42
+output_dir: "results/baseline_run"
+
+dataset:
+  name: "synthetic_test"
+  data_path: "tests/fixtures/synthetic_fixture.json"
+  feature_schema_id: "schema-synthetic-v1"
+  sample_id_col: "sample_id"
+  label_col: "label"
+  family_col: "family_id"
+  trace_col: "trace_id"
+  timestamp_col: "timestamp"
+
+split:
+  strategy: "synthetic_dev"
+  train_ratio: 0.60
+  val_ratio: 0.20
+  test_ratio: 0.20
+  seed: 42
+
+model:
+  model_id: "b2-random-forest"
+  model_family: "random_forest"
+  hyperparameters:
+    n_estimators: 100
+    max_depth: 10
+    random_state: 42
+  seed: 42
+
+policy:
+  policy_version: "baseline-pass-through-v1"
+  thresholds:
+    tau_alert: 0.50
+    tau_contain: 0.85
+    min_confidence: 0.50
+    temporal_consistency_threshold: 0.70
+    min_temporal_observations: 3
+  enable_calibration: false
+  enable_temporal: false

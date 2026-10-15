@@ -1,0 +1,61 @@
+{
+  "dataset_name": "mlran",
+  "provenance": {
+    "repository": "https://github.com/faithfulco/mlran",
+    "paper_arxiv": "https://arxiv.org/abs/2505.18613",
+    "journal_doi": "https://doi.org/10.1016/j.jnca.2026.104475",
+    "license": "MIT License"
+  },
+  "created_utc": "2026-10-15T12:46:28.317221+00:00",
+  "files": {
+    "MLRan_X_train_RFE.csv": {
+      "source_url": "https://raw.githubusercontent.com/faithfulco/mlran/main/6_experiments/FS_MLRan_Datasets/MLRan_X_train_RFE.csv",
+      "local_path": "data\\raw\\mlran\\MLRan_X_train_RFE.csv",
+      "size_bytes": 3823883,
+      "sha256": "8bf6eb3978272127978fcc198f75050c9d3a1adc9955c9bb0dd0f6d9928e5284",
+      "download_timestamp_utc": "2026-10-15T12:46:14.923719+00:00"
+    },
+    "MLRan_X_test_RFE.csv": {
+      "source_url": "https://raw.githubusercontent.com/faithfulco/mlran/main/6_experiments/FS_MLRan_Datasets/MLRan_X_test_RFE.csv",
+      "local_path": "data\\raw\\mlran\\MLRan_X_test_RFE.csv",
+      "size_bytes": 957374,
+      "sha256": "b10ed700de1243702b1162f805ef452c52e8719b39f7a751bb1f24df2f9c5b11",
+      "download_timestamp_utc": "2026-10-15T12:46:23.973715+00:00"
+    },
+    "MLRan_labels.csv": {
+      "source_url": "https://raw.githubusercontent.com/faithfulco/mlran/main/6_experiments/FS_MLRan_Datasets/MLRan_labels.csv",
+      "local_path": "data\\raw\\mlran\\MLRan_labels.csv",
+      "size_bytes": 60175,
+      "sha256": "c409c5dc9eb9976a1e8526aeaadc106a800941ff12f4302db76ed0e416cd5f92",
+      "download_timestamp_utc": "2026-10-15T12:46:24.580549+00:00"
+    },
+    "mlran_dataset_metadata.csv": {
+      "source_url": "https://raw.githubusercontent.com/faithfulco/mlran/main/6_experiments/FS_MLRan_Datasets/mlran_dataset_metadata.csv",
+      "local_path": "data\\raw\\mlran\\mlran_dataset_metadata.csv",
+      "size_bytes": 1287438,
+      "sha256": "1cdb3180446d20dd0cc7fb24ae973fed281a37eb020b2191ff7566230035d3de",
+      "download_timestamp_utc": "2026-10-15T12:46:25.745101+00:00"
+    },
+    "RFE_selected_feature_names_dic.json": {
+      "source_url": "https://raw.githubusercontent.com/faithfulco/mlran/main/6_experiments/FS_MLRan_Datasets/RFE_selected_feature_names_dic.json",
+      "local_path": "data\\raw\\mlran\\RFE_selected_feature_names_dic.json",
+      "size_bytes": 29450,
+      "sha256": "83af2d591b6935254574a027d29c304cd1e18113108cfd68cc09a336e8793d10",
+      "download_timestamp_utc": "2026-10-15T12:46:26.759847+00:00"
+    },
+    "type_train_sampleids.csv": {
+      "source_url": "https://raw.githubusercontent.com/faithfulco/mlran/main/6_experiments/FS_MLRan_Datasets/type_train_sampleids.csv",
+      "local_path": "data\\raw\\mlran\\type_train_sampleids.csv",
+      "size_bytes": 23440,
+      "sha256": "447969b83836e9ccecdb1bdb9a9e1ce56174007b54caaa4783ca051539a6621a",
+      "download_timestamp_utc": "2026-10-15T12:46:27.287771+00:00"
+    },
+    "type_test_sampleids.csv": {
+      "source_url": "https://raw.githubusercontent.com/faithfulco/mlran/main/6_experiments/FS_MLRan_Datasets/type_test_sampleids.csv",
+      "local_path": "data\\raw\\mlran\\type_test_sampleids.csv",
+      "size_bytes": 5860,
+      "sha256": "5854298e9320cae39888857cca14bca6c040cf1f055b350ec43a5697f4b51462",
+      "download_timestamp_utc": "2026-10-15T12:46:28.317221+00:00"
+    }
+  }
+}

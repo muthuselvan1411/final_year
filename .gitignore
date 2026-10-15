@@ -1,4 +1,4 @@
-﻿# Python bytecode and caches
+# Python bytecode and caches
 __pycache__/
 *.py[cod]
 *$py.class
@@ -32,6 +32,7 @@ htmlcov/
 # Generated build directories
 build/
 dist/
+*.egg-info/
 
 # Logs and temporary files
 *.log
@@ -43,3 +44,22 @@ dist/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Research data and large files (never commit raw data or weights)
+data/raw/
+!data/raw/.gitkeep
+*.parquet
+*.h5
+*.feather
+*.pkl
+*.joblib
+*.pt
+*.pth
+*.onnx
+*.bin
+
+# Experiment runs and outputs (track README only)
+results/*
+!results/README.md
+runs/*
+!runs/README.md

@@ -1,0 +1,25 @@
+{
+  "file_name": "synthetic_fixture.json",
+  "file_path": "tests\\fixtures\\synthetic_fixture.json",
+  "file_size_bytes": 3717,
+  "sha256": "05eb96892ca55b4512da604a47653a98a425fd09e55187d10f51d70d4a8ca380",
+  "format": ".json",
+  "row_count": 10,
+  "columns": [
+    "sample_id",
+    "label",
+    "family_id",
+    "trace_id",
+    "timestamp",
+    "features"
+  ],
+  "sample_id_column": "sample_id",
+  "label_column": "label",
+  "unique_sample_ids": 10,
+  "duplicate_sample_ids": 0,
+  "missing_sample_ids": 0,
+  "label_distribution": {
+    "0": 5,
+    "1": 5
+  }
+}
