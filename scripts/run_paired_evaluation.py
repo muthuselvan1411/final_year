@@ -23,7 +23,10 @@ from ransomshield.data.loader import load_mlran_dataset
 from ransomshield.decision.calibration import ProbabilityCalibrator
 from ransomshield.decision.evidence import build_evidence_record
 from ransomshield.decision.policy import OperationalDecisionPolicy
-from ransomshield.evaluation.metrics import compute_detector_metrics
+from ransomshield.evaluation.metrics import (
+    compute_action_tier_metrics,
+    compute_detector_metrics,
+)
 from ransomshield.manifest import create_manifest, save_manifest
 
 
@@ -102,6 +105,7 @@ def run_paired_evaluation() -> None:
 
     actions = [d.action for d in eadl_decisions]
     action_series = pd.Series(actions)
+    action_tier_metrics = compute_action_tier_metrics(y_test, actions)
     print(" Done.")
 
     # Operational Decision Metrics
@@ -194,6 +198,7 @@ def run_paired_evaluation() -> None:
             "false_escalation_to_containment_rate": false_escalation_rate,
             "containment_recommendation_precision": containment_precision,
             "insufficient_escalation_rate": insufficient_rate,
+            **action_tier_metrics,
         },
         "ablations": {
             "c1_uncalibrated_benign_contained_count": c1_benign_contained,

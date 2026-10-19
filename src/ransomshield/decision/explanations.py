@@ -31,6 +31,11 @@ def generate_decision_explanation(
         if evidence.missing_evidence
         else ""
     )
+    summary_str = (
+        f" Evidence: {'; '.join(evidence.evidence_summary)}."
+        if evidence.evidence_summary
+        else ""
+    )
 
     if action == "ABSTAIN":
         return f"ABSTAIN: Data quality or schema check failed for sample {prediction.sample_id}. Policy: {policy_version}/{rule_str}."
@@ -39,24 +44,24 @@ def generate_decision_explanation(
         return (
             f"{action}: High-confidence malicious probability {prob_str} exceeded containment threshold "
             f"{tau_contain:.2f} (band: {evidence.confidence_band}). Advisory recommendation only; no automated endpoint disruption."
-            f"{missing_str} Policy: {policy_version}/{rule_str}."
+            f"{missing_str}{summary_str} Policy: {policy_version}/{rule_str}."
         )
 
     if action in ["ALERT", "ALERT_REVIEW"]:
         return (
             f"{action}: Malicious probability {prob_str} exceeded alert threshold {tau_alert:.2f} "
             f"but remained below containment threshold {tau_contain:.2f} (band: {evidence.confidence_band})."
-            f"{missing_str} Policy: {policy_version}/{rule_str}."
+            f"{missing_str}{summary_str} Policy: {policy_version}/{rule_str}."
         )
 
     if action in ["MONITOR", "REVIEW"]:
         return (
             f"{action}: Ambiguous score or low confidence (probability: {prob_str}, band: {evidence.confidence_band})."
-            f"{missing_str} Policy: {policy_version}/{rule_str}."
+            f"{missing_str}{summary_str} Policy: {policy_version}/{rule_str}."
         )
 
     # NO_ALERT / ALLOW_LOG
     return (
         f"{action}: Malicious probability {prob_str} is below alert threshold {tau_alert:.2f} (band: {evidence.confidence_band})."
-        f"{missing_str} Policy: {policy_version}/{rule_str}."
+        f"{missing_str}{summary_str} Policy: {policy_version}/{rule_str}."
     )

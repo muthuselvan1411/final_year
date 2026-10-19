@@ -10,8 +10,9 @@ Implements the typed contracts defined in docs/decision_contract.md and 06-decis
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
-from typing import Literal, Tuple, Union
+from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Literal, Mapping, Tuple
 
 # Supported operational actions
 Action = Literal[
@@ -57,6 +58,12 @@ class EvidenceRecord:
     observation_count: int | None
     evidence_sources: Tuple[str, ...]
     missing_evidence: Tuple[str, ...]
+    model_probability: float | None = None
+    evidence_availability: Mapping[str, str] = field(default_factory=dict)
+    event_window: Tuple[datetime, datetime] | None = None
+    process_context: Mapping[str, str | int | None] = field(default_factory=dict)
+    evidence_summary: Tuple[str, ...] = ()
+    limitations: Tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -133,10 +140,32 @@ def validate_evidence_record(record: EvidenceRecord) -> None:
             )
 
     if record.observation_count is not None:
-        if record.observation_count < 0:
+        if not isinstance(record.observation_count, int) or record.observation_count < 0:
             raise ContractValidationError(
                 f"EvidenceRecord 'observation_count' cannot be negative, got {record.observation_count}"
             )
+
+    if record.model_probability is not None:
+        if not math.isfinite(record.model_probability) or not (0.0 <= record.model_probability <= 1.0):
+            raise ContractValidationError(
+                "EvidenceRecord 'model_probability' must be finite and in [0.0, 1.0]."
+            )
+
+    if record.event_window is not None:
+        start, end = record.event_window
+        if not isinstance(start, datetime) or not isinstance(end, datetime) or end < start:
+            raise ContractValidationError(
+                "EvidenceRecord 'event_window' must contain ordered datetime values."
+            )
+
+    if not isinstance(record.evidence_availability, Mapping):
+        raise ContractValidationError("EvidenceRecord 'evidence_availability' must be a mapping.")
+    valid_statuses = {"measured", "unavailable", "insufficient", "not_applicable"}
+    invalid_statuses = set(record.evidence_availability.values()) - valid_statuses
+    if invalid_statuses:
+        raise ContractValidationError(
+            f"EvidenceRecord contains invalid availability statuses: {sorted(invalid_statuses)}"
+        )
 
 
 def validate_decision_record(record: DecisionRecord) -> None:

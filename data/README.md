@@ -31,5 +31,6 @@ data/
    - License and permissible use terms
 
 4. **Status of Candidate Datasets:**
+   - **CSU-Ransomware-Data:** Auxiliary engineered-feature reference downloaded from https://github.com/CSCRC-SCREED/CSU-Ransomware-Data. It contains 352,876 labeled rows and 19 engineered features plus the label, not raw Sysmon event records. The source does not declare a license; do not use it as the primary event-level training, validation, or test dataset. Provenance: `data/manifests/csu_ransomware_reference.json`.
    - **MLRan:** Host-behavior ransomware feature dataset (Journal of Network and Computer Applications, 2026). Source: https://github.com/faithfulco/mlran. Local download/hash: **Pending Stage 2 / Data Approval Gate**.
    - **N-BaIoT:** Commercial IoT botnet network traffic dataset (UCI DOI: 10.24432/C5RC8J). Evaluated in a separate, unmerged portability study. Local download/hash: **Pending Stage 2 / Portability Gate**.

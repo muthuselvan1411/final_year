@@ -1,0 +1,22 @@
+schema_id: schema-event-window-v1
+feature_names:
+  - observation_count
+  - file_modifications
+  - rename_count
+  - delete_count
+  - distinct_files
+  - repeated_files
+  - event_rate
+  - burst_ratio
+  - temporal_consistency
+  - distinct_pids
+  - distinct_ppids
+  - single_process_available
+  - process_event_count
+  - process_ordered
+  - has_pid
+  - has_ppid
+causal_rule: "Only normalized events with timestamp <= decision_time are eligible."
+missingness_rule: "Availability is recorded separately; missing evidence is not treated as measured zero."
+label_rule: "Labels are never accepted by or used in feature extraction."
+frozen_mlran_schema: "schema-mlran-rfe-483"

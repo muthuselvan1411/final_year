@@ -20,6 +20,56 @@ from sklearn.metrics import (
 )
 
 
+def compute_action_tier_metrics(
+    y_true: np.ndarray,
+    actions: list[str] | np.ndarray,
+) -> Dict[str, Any]:
+    """Report action outcomes separately from binary detector metrics."""
+    labels = np.asarray(y_true, dtype=int)
+    action_values = np.asarray(actions, dtype=str)
+    if len(labels) != len(action_values):
+        raise ValueError("y_true and actions must have equal length")
+    containment = action_values == "CONTAINMENT_RECOMMENDED"
+    alert_or_higher = np.isin(
+        action_values, ["ALERT", "CONTAINMENT_RECOMMENDED"]
+    )
+    malicious = labels == 1
+    benign = labels == 0
+
+    def rate(numerator: int, denominator: int) -> float:
+        return float(numerator / denominator) if denominator else 0.0
+
+    counts = {
+        action: int(np.sum(action_values == action))
+        for action in ("NO_ALERT", "MONITOR", "ALERT", "CONTAINMENT_RECOMMENDED", "ABSTAIN")
+    }
+    return {
+        "action_counts": counts,
+        "malicious_by_action": {
+            action: int(np.sum(malicious & (action_values == action)))
+            for action in counts
+        },
+        "benign_by_action": {
+            action: int(np.sum(benign & (action_values == action)))
+            for action in counts
+        },
+        "containment_recommendation_precision": rate(
+            int(np.sum(malicious & containment)), int(np.sum(containment))
+        ),
+        "containment_recommendation_recall": rate(
+            int(np.sum(malicious & containment)), int(np.sum(malicious))
+        ),
+        "recall_at_alert_or_higher": rate(
+            int(np.sum(malicious & alert_or_higher)), int(np.sum(malicious))
+        ),
+        "recall_at_containment": rate(
+            int(np.sum(malicious & containment)), int(np.sum(malicious))
+        ),
+        "benign_escalated_to_alert_or_higher": int(np.sum(benign & alert_or_higher)),
+        "benign_escalated_to_containment": int(np.sum(benign & containment)),
+    }
+
+
 @dataclass
 class DetectorMetrics:
     total_samples: int

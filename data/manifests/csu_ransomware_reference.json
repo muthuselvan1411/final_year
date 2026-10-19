@@ -1,0 +1,28 @@
+{
+  "dataset": "CSU-Ransomware-Data",
+  "status": "auxiliary_reference_only",
+  "source_url": "https://github.com/CSCRC-SCREED/CSU-Ransomware-Data",
+  "retrieved_at": "2026-10-19",
+  "source_revision": "main",
+  "files": [
+    {
+      "path": "data/raw/csu_ransomware_reference/Ransomware_Data.csv",
+      "size_bytes": 25594540,
+      "sha256": "44aa5a189712843623993c10c42099899d8d78845b13fa0a772a556fb628c876",
+      "rows_excluding_header": 352876
+    },
+    {
+      "path": "data/raw/csu_ransomware_reference/metadata.yml",
+      "size_bytes": 4246,
+      "sha256": "e70374799e933cd7ac247a16bf6af1b55c1484565bea22ee146f5c778f4dc197"
+    }
+  ],
+  "schema_summary": {
+    "format": "engineered CSV",
+    "label_field": "Ware Type",
+    "event_level_raw_telemetry": false,
+    "raw_sysmon_events_in_release": false,
+    "license_declared_by_source": false
+  },
+  "use_restriction": "Do not use as the primary event-level training, validation, or test dataset."
+}

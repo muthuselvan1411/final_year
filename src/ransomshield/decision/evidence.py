@@ -5,7 +5,8 @@ Constructs immutable EvidenceRecords tracking source provenance and explicit mis
 
 from __future__ import annotations
 
-from typing import List, Optional, Tuple
+from datetime import datetime
+from typing import List, Mapping
 
 from ransomshield.decision.contract import EvidenceRecord, PredictionRecord, validate_evidence_record
 
@@ -31,6 +32,12 @@ def build_evidence_record(
     calibrator_id: str | None = None,
     temporal_consistency: float | None = None,
     observation_count: int | None = None,
+    model_probability: float | None = None,
+    evidence_availability: Mapping[str, str] | None = None,
+    event_window: tuple[datetime, datetime] | None = None,
+    process_context: Mapping[str, str | int | None] | None = None,
+    evidence_summary: tuple[str, ...] = (),
+    limitations: tuple[str, ...] = (),
 ) -> EvidenceRecord:
     """
     Builds a validated EvidenceRecord.
@@ -46,11 +53,18 @@ def build_evidence_record(
     else:
         missing.append("probability_calibration")
 
+    availability = dict(evidence_availability or {})
+    availability.setdefault(
+        "model_probability", "measured" if final_prob is not None else "unavailable"
+    )
     if temporal_consistency is not None:
         sources.append("temporal_consistency_aggregator")
+        availability.setdefault("temporal_consistency", "measured")
     else:
         missing.append("temporal_consistency")
         missing.append("process_trace_ordering")
+        availability.setdefault("temporal_consistency", "unavailable")
+        availability.setdefault("process_trace", "unavailable")
 
     band = determine_confidence_band(final_prob)
 
@@ -62,6 +76,12 @@ def build_evidence_record(
         observation_count=observation_count,
         evidence_sources=tuple(sources),
         missing_evidence=tuple(missing),
+        model_probability=model_probability if model_probability is not None else final_prob,
+        evidence_availability=availability,
+        event_window=event_window,
+        process_context=process_context or {},
+        evidence_summary=evidence_summary,
+        limitations=limitations,
     )
     validate_evidence_record(rec)
     return rec
