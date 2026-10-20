@@ -110,6 +110,166 @@ def _deduplicate_incidents(
     return unique, duplicates
 
 
+def _graph_payload(
+    incidents: list[dict[str, Any]],
+    events: list[dict[str, Any]],
+) -> dict[str, Any]:
+    event_by_id = {
+        (str(event.get("source_context", "")), str(event.get("source_event_id", ""))): event
+        for event in events
+        if event.get("source_event_id") not in (None, "")
+    }
+    nodes: dict[str, dict[str, Any]] = {}
+    edges: list[dict[str, Any]] = []
+    contexts: set[str] = set()
+    schemas: set[str] = set()
+    windows: list[dict[str, Any]] = []
+
+    def add_node(node_id: str | None, node_type: str, label: str, **data: Any) -> None:
+        if not node_id:
+            return
+        nodes.setdefault(
+            node_id,
+            {"id": node_id, "type": node_type, "label": label, "data": data},
+        )
+
+    def entity_id(kind: str, context: str, value: Any) -> str | None:
+        if value in (None, ""):
+            return None
+        return f"{kind}:{context}:{value}"
+
+    for incident in incidents:
+        correlation = incident.get("correlation")
+        if not isinstance(correlation, dict):
+            continue
+        context = str(
+            correlation.get("capture_context")
+            or incident.get("triggering_source_context")
+            or ""
+        )
+        if context:
+            contexts.add(context)
+        if correlation.get("schema_id"):
+            schemas.add(str(correlation["schema_id"]))
+        windows.append(
+            {
+                "start": correlation.get("window_start"),
+                "end": correlation.get("window_end"),
+                "timestamp_source": correlation.get("timestamp_source"),
+                "timestamp_unit": correlation.get("timestamp_unit"),
+            }
+        )
+        for relation in correlation.get("relationships", []):
+            if not isinstance(relation, dict):
+                continue
+            source_id = relation.get("source_entity_id")
+            target_id = relation.get("target_entity_id")
+            relation_type = str(relation.get("relationship_type", ""))
+            details = relation.get("details")
+            details = details if isinstance(details, dict) else {}
+            source_event = event_by_id.get((context, str(relation.get("source_event_id", ""))))
+            target_event = event_by_id.get((context, str(relation.get("target_event_id", ""))))
+
+            # Older persisted records predate explicit entity endpoints. Project
+            # only relationships whose stored type/details identify both ends.
+            if not source_id or not target_id:
+                if relation_type == "process_performed_file_operation":
+                    source_id = entity_id("process", context, f"pid:{details.get('pid')}")
+                    target_id = entity_id("file", context, f"path:{details.get('path')}")
+                elif relation_type == "process_made_network_connection_attempt":
+                    address = details.get("dst_ip") or details.get("dst_host")
+                    port = details.get("dst_port") or "unknown"
+                    source_id = entity_id("process", context, f"pid:{details.get('pid')}")
+                    target_id = entity_id("network", context, f"{address or 'unknown'}:{port}")
+                elif relation_type == "file_rename_observed":
+                    source_id = entity_id("file", context, f"path:{details.get('old_path')}")
+                    target_id = entity_id("file", context, f"path:{details.get('new_path')}")
+                elif relation_type == "process_spawned_by":
+                    source_id = entity_id("process", context, f"pid:{details.get('parent_pid')}")
+                    target_id = entity_id("process", context, f"pid:{details.get('child_pid')}")
+                elif relation_type == "event_order":
+                    source_id = entity_id("event", context, relation.get("source_event_id"))
+                    target_id = entity_id("event", context, relation.get("target_event_id"))
+            if not source_id or not target_id or source_id == target_id:
+                continue
+            source_type = "process" if str(source_id).startswith("process:") else (
+                "file" if str(source_id).startswith("file:") else
+                "network" if str(source_id).startswith("network:") else "event"
+            )
+            target_type = "process" if str(target_id).startswith("process:") else (
+                "file" if str(target_id).startswith("file:") else
+                "network" if str(target_id).startswith("network:") else "event"
+            )
+            add_node(
+                str(source_id),
+                source_type,
+                str((source_event or {}).get("process") or (source_event or {}).get("path") or source_id),
+                pid=(source_event or {}).get("pid"),
+                ppid=(source_event or {}).get("ppid"),
+                path=(source_event or {}).get("path"),
+                source_context=context,
+            )
+            add_node(
+                str(target_id),
+                target_type,
+                str((target_event or {}).get("process") or (target_event or {}).get("path") or target_id),
+                pid=(target_event or {}).get("pid"),
+                ppid=(target_event or {}).get("ppid"),
+                path=(target_event or {}).get("path"),
+                dst_ip=(target_event or {}).get("dst_ip"),
+                dst_port=(target_event or {}).get("dst_port"),
+                source_context=context,
+            )
+            edges.append(
+                {
+                    "id": f"{context}:{relation.get('relationship_type')}:{relation.get('source_event_id')}:{relation.get('target_event_id')}",
+                    "source": str(source_id),
+                    "target": str(target_id),
+                    "type": relation.get("relationship_type"),
+                    "source_event_id": relation.get("source_event_id"),
+                    "target_event_id": relation.get("target_event_id"),
+                    "evidence": relation.get("evidence"),
+                    "inferred": bool(relation.get("inferred", False)),
+                    "details": details,
+                    "source_context": context,
+                }
+            )
+    return {
+        "nodes": list(nodes.values()),
+        "edges": edges,
+        "capture_contexts": sorted(contexts),
+        "schema_ids": sorted(schemas),
+        "windows": windows,
+        "limitations": (
+            ["legacy relationships without entity endpoints could not be projected"]
+            if any(
+                isinstance(record.get("correlation"), dict)
+                and any(
+                    (
+                        not relation.get("source_entity_id")
+                        or not relation.get("target_entity_id")
+                    )
+                    and not (
+                        relation.get("relationship_type")
+                        in {
+                            "process_performed_file_operation",
+                            "process_made_network_connection_attempt",
+                            "file_rename_observed",
+                            "process_spawned_by",
+                            "event_order",
+                        }
+                        and isinstance(relation.get("details"), dict)
+                    )
+                    for relation in record["correlation"].get("relationships", [])
+                    if isinstance(relation, dict)
+                )
+                for record in incidents
+            )
+            else []
+        ),
+    }
+
+
 class DashboardRepository:
     def __init__(self, sources: dict[str, DashboardSource], *, max_records: int = 100_000):
         if not sources:
@@ -295,6 +455,16 @@ def create_app(
             "correlation": correlation,
             "relationships": correlation.get("relationships", []),
             "supporting_events": incident.get("supporting_events", []),
+        }
+
+    @app.get("/api/graph")
+    def graph(source: str = Query(...)) -> dict[str, Any]:
+        selected = get_source(source)
+        incidents, _, _ = repository.incidents(selected)
+        events, _, _ = repository.events(selected)
+        return {
+            "source": _source_payload(selected),
+            "graph": _graph_payload(incidents, events),
         }
 
     @app.get("/api/events")

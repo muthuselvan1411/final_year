@@ -50,6 +50,8 @@ class CorrelationRelationship:
     evidence: str
     inferred: bool
     details: dict[str, Any]
+    source_entity_id: str | None = None
+    target_entity_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -363,6 +365,8 @@ class BehaviorCorrelationEngine:
                         "parent_pid": self._positive_int(parent.get("pid")),
                         "child_pid": self._positive_int(child.get("pid")),
                     },
+                    self._process_entity_id(parent),
+                    self._process_entity_id(child),
                 )
             )
         for event in events:
@@ -378,6 +382,8 @@ class BehaviorCorrelationEngine:
                         "event pid and file operation type are present",
                         False,
                         {"pid": pid, "event_type": event_type, "path": event.get("path")},
+                        self._process_entity_id(event),
+                        self._file_entity_id(event),
                     )
                 )
             if pid is not None and (
@@ -398,6 +404,8 @@ class BehaviorCorrelationEngine:
                             "dst_port": event.get("dst_port"),
                             "success": event.get("success"),
                         },
+                        self._process_entity_id(event),
+                        self._network_entity_id(event),
                     )
                 )
             if event_type == "FILE_RENAME":
@@ -411,6 +419,8 @@ class BehaviorCorrelationEngine:
                             "rename event contains old_path and current path",
                             False,
                             {"old_path": old_path, "new_path": event.get("path")},
+                            self._file_entity_id_for_path(event, old_path),
+                            self._file_entity_id(event),
                         )
                     )
         for left, right in zip(events, events[1:]):
@@ -423,9 +433,47 @@ class BehaviorCorrelationEngine:
                         "valid causal timestamps ordered the observations",
                         True,
                         {},
+                        self._event_entity_id(left),
+                        self._event_entity_id(right),
                     )
                 )
         return relationships
+
+    @staticmethod
+    def _context_prefix(event: dict[str, Any]) -> str:
+        return str(event.get("source_context") or "unknown-context")
+
+    @classmethod
+    def _process_entity_id(cls, event: dict[str, Any]) -> str | None:
+        pid = cls._positive_int(event.get("pid"))
+        return (
+            f"process:{cls._context_prefix(event)}:pid:{pid}"
+            if pid is not None
+            else None
+        )
+
+    @classmethod
+    def _file_entity_id(cls, event: dict[str, Any]) -> str | None:
+        return cls._file_entity_id_for_path(event, event.get("path"))
+
+    @classmethod
+    def _file_entity_id_for_path(cls, event: dict[str, Any], path: Any) -> str | None:
+        if path in (None, ""):
+            return None
+        return f"file:{cls._context_prefix(event)}:path:{path}"
+
+    @classmethod
+    def _network_entity_id(cls, event: dict[str, Any]) -> str | None:
+        address = event.get("dst_ip") or event.get("dst_host")
+        port = event.get("dst_port")
+        if address in (None, "") and port in (None, ""):
+            return None
+        return f"network:{cls._context_prefix(event)}:{address or 'unknown'}:{port or 'unknown'}"
+
+    @classmethod
+    def _event_entity_id(cls, event: dict[str, Any]) -> str | None:
+        event_id = cls._event_id(event)
+        return f"event:{cls._context_prefix(event)}:{event_id}" if event_id else None
 
     def _features(
         self,

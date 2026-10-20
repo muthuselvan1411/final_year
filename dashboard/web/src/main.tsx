@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { apiBase, getJson, Source } from "./api";
+import { ReactFlow, Background, Controls, MiniMap, MarkerType, type Edge, type Node, type NodeMouseHandler, type EdgeMouseHandler } from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
 import "./styles.css";
 
 type Event = Record<string, any>;
@@ -10,6 +12,14 @@ type Summary = { source: Source & { malformed_records: number; errors: string[] 
 type TestRecord = { event: Event; decision: Record<string, any>; correlation: Record<string, any>; supporting_events?: Event[]; evidence?: Record<string, any> };
 type TestRun = { source: { label: string; kind: string }; scenario: string; records: TestRecord[]; total_events: number; decision_counts: Record<string, number>; detector_status: string; side_effects: string };
 type View = "live" | "behavior" | "incidents" | "events";
+type GraphPayload = {
+  nodes: Array<{ id: string; type: string; label: string; data: Record<string, any> }>;
+  edges: Array<{ id: string; source: string; target: string; type: string; source_event_id?: string; target_event_id?: string; evidence?: string; inferred?: boolean; details?: Record<string, any> }>;
+  capture_contexts: string[];
+  schema_ids: string[];
+  windows: Array<Record<string, any>>;
+  limitations: string[];
+};
 
 const tabs: Array<[View, string]> = [["live", "Live Monitoring"], ["behavior", "Behavioral Analysis"], ["incidents", "Incident Investigation"], ["events", "Event Explorer"]];
 
@@ -64,7 +74,7 @@ function App() {
     <nav className="tabs">{tabs.map(([key, label]) => <button className={view === key ? "active" : ""} onClick={() => setView(key)} key={key}>{label}</button>)}</nav>
     {error && <div className="error">{error}</div>}
     {view === "live" && <LiveMonitoring summary={summary} incidents={incidents} events={events} onSelect={(item) => { setSelected(item); setView("incidents"); }} />}
-    {view === "behavior" && <BehavioralAnalysis incidents={incidents} testRun={testRun} />}
+    {view === "behavior" && <BehavioralAnalysis source={source} incidents={incidents} testRun={testRun} />}
     {view === "incidents" && <IncidentInvestigation incidents={filteredIncidents} selected={selected} query={query} setQuery={setQuery} onSelect={setSelected} />}
     {view === "events" && <EventExplorer events={events} query={query} setQuery={setQuery} />}
   </main>;
@@ -75,16 +85,80 @@ function LiveMonitoring({ summary, incidents, events, onSelect }: { summary: Sum
   return <section><div className="page-heading"><div><p className="eyebrow">LIVE MONITORING</p><h1>{summary.source.label}</h1><p className="muted">Observed records from the selected {summary.source.kind} source. Historical data is not presented as live activity.</p></div><div className="availability"><span className="warning-dot" /> DETECTOR UNAVAILABLE<br /><b>ABSTAIN / null probability</b></div></div><div className="metrics"><Metric label="Events observed" value={summary.total_events} /><Metric label="Incidents recorded" value={summary.incidents_recorded} /><Metric label="ABSTAIN decisions" value={summary.abstain_count} /><Metric label="Malformed records" value={summary.source.malformed_records} /></div><div className="two-column"><Panel title="Event distribution"><Bars values={summary.event_types} /></Panel><Panel title="Decision distribution"><Bars values={summary.decisions} /></Panel></div><Panel title="Recent evidence"><div className="evidence-table"><div className="row header"><span>Event</span><span>Process</span><span>Decision</span><span>Source ID</span></div>{incidents.slice(-8).reverse().map((item) => <button className="row" key={item.index} onClick={() => onSelect(item)}><span>{item.event?.event_type ?? "OTHER"}</span><span>{item.event?.process ?? "—"} <small>#{item.event?.pid ?? "—"}</small></span><span className="state">{item.decision?.action ?? "—"}</span><span className="mono">{item.event?.source_event_id ?? "—"}</span></button>)}</div></Panel><p className="event-count">{events.length} normalized event records available to explore</p></section>;
 }
 
-function BehavioralAnalysis({ incidents, testRun }: { incidents: Incident[]; testRun: TestRun | null }) {
+function BehavioralAnalysis({ source, incidents, testRun }: { source: string; incidents: Incident[]; testRun: TestRun | null }) {
+  const [graph, setGraph] = useState<GraphPayload | null>(null);
+  const [graphError, setGraphError] = useState("");
+  const [graphLoading, setGraphLoading] = useState(true);
+  useEffect(() => {
+    if (!source) return;
+    setGraph(null);
+    setGraphError("");
+    setGraphLoading(true);
+    getJson<{ graph: GraphPayload }>(`/api/graph?source=${encodeURIComponent(source)}`)
+      .then((payload) => setGraph(payload.graph))
+      .catch((err: Error) => setGraphError(err.message))
+      .finally(() => setGraphLoading(false));
+  }, [source]);
   const testRecord = testRun?.records[testRun.records.length - 1];
   const record = testRecord ?? incidents[incidents.length - 1];
   const correlation = testRecord?.correlation ?? record?.correlation;
+  if (graphError) return <Empty title="Graph unavailable" text={graphError} />;
+  if (graphLoading) return <Empty title="Loading evidence graph" text="Reading persisted relationships from the selected source." />;
+  if (graph && !testRun) return <GraphWorkspace source={source} graph={graph} incidents={incidents} />;
   if (!record || !correlation) return <Empty title="No correlation evidence available" text="Select a source with persisted correlation records or run the safe in-memory test." />;
   const relationships = correlation.relationships ?? [];
   const features = correlation.feature_values ?? {};
   const available = correlation.available ?? {};
   const timelineEvents = testRecord?.supporting_events ?? (record as Incident).supporting_events ?? [];
   return <section><div className="page-heading"><div><p className="eyebrow">BEHAVIORAL ANALYSIS</p><h1>Evidence-backed correlation</h1><p className="muted">Only persisted relationship records are shown. No edge is inferred by the browser.</p></div><div className="schema">{correlation.schema_id ?? "No correlation schema"}<br /><small>{correlation.capture_context ?? record.event?.source_context ?? "context unavailable"}</small></div></div><div className="analysis-meta"><span>Window {correlation.window_start ?? "—"} → {correlation.window_end ?? "—"}</span><span>Basis: {correlation.timestamp_source ?? "unavailable"} ({correlation.timestamp_unit ?? "—"})</span><span>Supporting events: {(correlation.supporting_event_ids ?? []).length}</span></div><div className="analysis-grid"><Panel title="Process / entity relationships"><div className="relationship-graph">{relationships.length === 0 ? <Empty title="No relationships recorded" text="This window has no supported parent-child, file, network or ordering edges." /> : relationships.map((relation: any, index: number) => <div className="edge" key={`${relation.relationship_type}-${index}`}><span className={relation.inferred ? "inferred" : "observed"}>{relation.inferred ? "INFERRED" : "OBSERVED"}</span><b>{relation.relationship_type}</b><small>{relation.source_event_id ?? "—"} → {relation.target_event_id ?? "—"}</small><em>{relation.evidence}</em></div>)}</div></Panel><Panel title="Correlation feature vector"><div className="feature-list">{Object.entries(features).map(([name, value]) => <div className="feature" key={name}><span>{name}</span><b>{String(value)}</b><i className={available[name] ? "available" : "missing"}>{available[name] ? "available" : "unavailable"}</i></div>)}</div></Panel></div><Panel title="Ordered event timeline"><div className="timeline">{timelineEvents.map((event, index) => <div className="timeline-item" key={`${event.source_event_id}-${index}`}><span className="mono">{event.timestamp_ns ?? event.timestamp ?? "—"}</span><b>{event.event_type ?? "OTHER"}</b><code>{event.source_event_id ?? "—"}</code></div>)}</div></Panel><Panel title="Supporting event IDs"><div className="chips">{(correlation.supporting_event_ids ?? []).map((id: string) => <code key={id}>{id}</code>)}</div><p className="limitations">{[...(correlation.limitations ?? []), ...(record.evidence?.limitations ?? [])].map((item: string) => <span key={item}>{item}</span>)}</p></Panel></section>;
+}
+
+function GraphWorkspace({ source, graph, incidents }: { source: string; graph: GraphPayload; incidents: Incident[] }) {
+  const [selectedId, setSelectedId] = useState("");
+  const [eventDetail, setEventDetail] = useState<Event | null>(null);
+  useEffect(() => setSelectedId(""), [graph]);
+  const processNodes = graph.nodes.filter((node) => node.type === "process");
+  const otherNodes = graph.nodes.filter((node) => node.type !== "process");
+  const nodes: Node[] = [...processNodes, ...otherNodes].map((node, index) => ({
+    id: node.id,
+    position: node.type === "process"
+      ? { x: 80, y: index * 180 + 90 }
+      : { x: node.type === "file" ? 420 : 760, y: (index - processNodes.length) * 130 + 80 },
+    data: { label: <div><strong>{node.label}</strong><small>{node.type}{node.data.pid ? ` · PID ${node.data.pid}` : ""}</small></div> },
+    className: `graph-node ${node.type}`,
+  }));
+  const edges: Edge[] = graph.edges.map((edge) => ({
+    id: edge.id,
+    source: edge.source,
+    target: edge.target,
+    label: edge.type,
+    markerEnd: { type: MarkerType.ArrowClosed, color: edge.inferred ? "#f0bd59" : "#72dfca" },
+    className: edge.inferred ? "graph-edge inferred-edge" : "graph-edge",
+    data: edge,
+  }));
+  const selectedNode = graph.nodes.find((node) => node.id === selectedId);
+  const selectedEdge = graph.edges.find((edge) => edge.id === selectedId);
+  const latest = incidents[incidents.length - 1];
+  const correlation = latest?.correlation ?? {};
+  const onNodeClick: NodeMouseHandler = (_, node) => setSelectedId(node.id);
+  const onEdgeClick: EdgeMouseHandler = (_, edge) => {
+    setSelectedId(edge.id);
+    setEventDetail(null);
+    if (edge.data?.source_event_id) {
+      getJson<{ event: Event }>(`/api/events/${encodeURIComponent(String(edge.data.source_event_id))}?source=${encodeURIComponent(source)}`)
+        .then((payload) => setEventDetail(payload.event))
+        .catch(() => setEventDetail(null));
+    }
+  };
+  return <section>
+    <div className="page-heading"><div><p className="eyebrow">BEHAVIORAL ANALYSIS</p><h1>Evidence-backed correlation</h1><p className="muted">Interactive graph from persisted entity endpoints. Selecting an edge or node never creates new evidence.</p></div><div className="schema">{graph.schema_ids.join(", ") || "No correlation schema"}<br /><small>{graph.capture_contexts.join(", ") || "context unavailable"}</small></div></div>
+    <div className="analysis-meta"><span>Nodes: {graph.nodes.length}</span><span>Relationships: {graph.edges.length}</span><span>Source contexts: {graph.capture_contexts.length}</span><span>Windows: {graph.windows.length}</span></div>
+    <div className="graph-layout">
+      <div className="graph-canvas"><div className="graph-legend"><span className="legend-process">Process</span><span className="legend-file">File</span><span className="legend-network">Network</span><span>Solid = observed · dashed = inferred</span></div>{nodes.length ? <ReactFlow nodes={nodes} edges={edges} fitView onNodeClick={onNodeClick} onEdgeClick={onEdgeClick}><Background color="#26323e" gap={24} /><Controls /><MiniMap /></ReactFlow> : <Empty title="No relationship evidence" text="Correlation completed, but this source contains no supported entity-to-entity relationships." />}</div>
+      <aside className="graph-inspector"><p className="eyebrow">SELECTION</p>{selectedNode ? <><h2>{selectedNode.label}</h2><Detail label="Entity">{selectedNode.type}<br /><code>{selectedNode.id}</code></Detail><Detail label="Properties"><pre>{JSON.stringify(selectedNode.data, null, 2)}</pre></Detail></> : selectedEdge ? <><h2>{selectedEdge.type}</h2><Detail label="Endpoints"><code>{selectedEdge.source} → {selectedEdge.target}</code></Detail><Detail label="Evidence"><button className="evidence-link" onClick={() => selectedEdge.source_event_id && getJson<{ event: Event }>(`/api/events/${encodeURIComponent(selectedEdge.source_event_id)}?source=${encodeURIComponent(source)}`).then((payload) => setEventDetail(payload.event))}>{selectedEdge.source_event_id ?? "source event unavailable"}</button><br />{selectedEdge.target_event_id ?? "target event unavailable"}<br />{selectedEdge.evidence ?? "—"}</Detail><Detail label="Details"><pre>{JSON.stringify(selectedEdge.details ?? {}, null, 2)}</pre></Detail>{eventDetail && <Detail label="Raw event"><pre>{JSON.stringify(eventDetail, null, 2)}</pre></Detail>}</> : <Empty title="Select a node or edge" text="Inspect entity properties and exact relationship provenance here." />}</aside>
+    </div>
+    <div className="analysis-grid"><Panel title="Behavioral evidence"><div className="timeline">{(latest?.supporting_events ?? []).map((event, index) => <div className="timeline-item" key={`${event.source_event_id}-${index}`}><span className="mono">{event.timestamp_ns ?? event.timestamp ?? "—"}</span><b>{event.event_type ?? "OTHER"}</b><code>{event.source_event_id ?? "—"}</code></div>)}</div><p className="limitations">{graph.limitations.map((item) => <span key={item}>{item}</span>)}</p></Panel><Panel title="MITRE ATT&CK context"><div className="empty compact-empty"><strong>No ATT&CK mapping established for the selected evidence.</strong><span>Correlation is descriptive and does not classify observed behavior as ransomware.</span></div></Panel></div>
+  </section>;
 }
 
 function IncidentInvestigation({ incidents, selected, query, setQuery, onSelect }: { incidents: Incident[]; selected: Incident | null; query: string; setQuery: (value: string) => void; onSelect: (item: Incident) => void }) {

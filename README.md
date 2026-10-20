@@ -78,6 +78,7 @@ API endpoints:
 - `GET /api/incidents?source=<name>&offset=0&limit=50`
 - `GET /api/incidents/{index}?source=<name>`
 - `GET /api/incidents/{index}/correlation?source=<name>`
+- `GET /api/graph?source=<name>`
 - `GET /api/events?source=<name>&offset=0&limit=50`
 - `GET /api/events/{source_event_id}?source=<name>`
 - `GET /api/timeline?source=<name>`
@@ -98,8 +99,12 @@ simulation, and live sources separately, shows explicit `ABSTAIN` and null
 probability states, and links incident evidence to persisted event IDs. The
 navigation is organized as **Live Monitoring**, **Behavioral Analysis**,
 **Incident Investigation**, and **Event Explorer**. Behavioral Analysis renders
-only persisted `schema-behavior-correlation-v1` relationships, features,
-availability masks, timestamp basis, and supporting IDs. **Run safe test**
+only persisted `schema-behavior-correlation-v1` relationships, typed process,
+file and network entity nodes, availability masks, timestamp basis, and
+supporting IDs. The graph uses React Flow for pan, zoom, dragging, fit-to-view,
+selection, controls and a minimap. Legacy self-referential relationships
+without entity endpoints are omitted and reported as a data limitation.
+**Run safe test**
 exercises the same normalizer/pipeline/correlation path in memory and reports
 the resulting four events and four `ABSTAIN` decisions; it is not a detector
 test or efficacy measurement.

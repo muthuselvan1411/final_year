@@ -8,6 +8,7 @@ fastapi = pytest.importorskip("fastapi")
 from fastapi.testclient import TestClient
 
 from dashboard.api import DashboardSource, create_app
+from scripts.run_safe_simulation import run_scenario
 
 
 def _app(tmp_path):
@@ -114,3 +115,88 @@ def test_safe_dashboard_test_uses_real_pipeline_and_abstains(tmp_path):
     assert payload["records"][-1]["correlation"]["schema_id"] == (
         "schema-behavior-correlation-v1"
     )
+
+
+def test_graph_endpoint_is_read_only_and_typed(tmp_path):
+    client = _app(tmp_path)
+    response = client.get("/api/graph", params={"source": "fixture"})
+    assert response.status_code == 200
+    payload = response.json()["graph"]
+    assert payload["nodes"] == []
+    assert payload["edges"] == []
+
+
+def test_graph_endpoint_projects_real_simulation_relationships(tmp_path):
+    output = tmp_path / "simulation"
+    result = run_scenario("benign_file_operations", output)
+    assert result["observed_event_count"] == 4
+    client = TestClient(
+        create_app(
+            {
+                "simulation": DashboardSource(
+                    "simulation",
+                    "simulation",
+                    output / "incidents.jsonl",
+                )
+            }
+        )
+    )
+
+    payload = client.get("/api/graph", params={"source": "simulation"}).json()["graph"]
+    node_ids = {node["id"] for node in payload["nodes"]}
+    assert len(payload["nodes"]) == 7
+    assert len(payload["edges"]) == 18
+    assert payload["capture_contexts"] == ["simulation:benign_file_operations"]
+    assert all(
+        edge["source"] in node_ids and edge["target"] in node_ids
+        for edge in payload["edges"]
+    )
+    assert all(edge["source_event_id"] for edge in payload["edges"])
+    assert any(edge["type"] == "process_performed_file_operation" for edge in payload["edges"])
+    assert any(edge["type"] == "file_rename_observed" for edge in payload["edges"])
+
+
+def test_graph_endpoint_projects_legacy_relationship_details(tmp_path):
+    event = {
+        "timestamp": 100.0,
+        "timestamp_ns": None,
+        "pid": 9001,
+        "ppid": 1,
+        "process": "simulation",
+        "event_type": "FILE_OPEN",
+        "path": "/tmp/simulation/note.txt",
+        "source_event_id": "legacy-event",
+        "source_context": "simulation:legacy",
+    }
+    incident = {
+        "event": event,
+        "triggering_source_context": "simulation:legacy",
+        "correlation": {
+            "schema_id": "schema-behavior-correlation-v1",
+            "capture_context": "simulation:legacy",
+            "relationships": [
+                {
+                    "relationship_type": "process_performed_file_operation",
+                    "source_event_id": "legacy-event",
+                    "target_event_id": "legacy-event",
+                    "evidence": "legacy evidence",
+                    "inferred": False,
+                    "details": {
+                        "pid": 9001,
+                        "path": "/tmp/simulation/note.txt",
+                        "event_type": "FILE_OPEN",
+                    },
+                }
+            ],
+        },
+    }
+    path = tmp_path / "legacy.jsonl"
+    path.write_text(json.dumps(incident) + "\n", encoding="utf-8")
+    payload = TestClient(
+        create_app(
+            {"legacy": DashboardSource("legacy", "replay", path)}
+        )
+    ).get("/api/graph", params={"source": "legacy"}).json()["graph"]
+    assert len(payload["nodes"]) == 2
+    assert len(payload["edges"]) == 1
+    assert payload["edges"][0]["source"] != payload["edges"][0]["target"]

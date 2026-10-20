@@ -44,6 +44,74 @@ in this validation. Recorded replay and harmless simulation are verified;
 live-sensor freshness and browser delivery require a configured running
 collector and decision output.
 
+## Interactive behavioral graph
+
+Correlation relationships now retain both source-event provenance and explicit
+entity endpoints. Process/file/network relationships no longer use an event ID
+as both edge endpoints. Entity IDs are capture-context scoped:
+
+- `process:<context>:pid:<pid>`
+- `file:<context>:path:<path>`
+- `network:<context>:<address>:<port>`
+- `event:<context>:<source-event-id>` for ordering evidence
+
+The read-only `GET /api/graph?source=<name>` endpoint aggregates persisted
+correlation records into typed nodes and edges. It preserves source contexts,
+schemas, windows, relationship evidence, inference flags, details and source
+event IDs. Old records without entity endpoints are not given fabricated edges;
+they are omitted from the graph and returned as an explicit limitation.
+
+The Behavioral Analysis page uses React Flow for node dragging, pan/zoom,
+fit-to-view, controls, minimap, node/edge selection and an evidence inspector.
+It also shows a chronological supporting-event timeline and a separate ATT&CK
+panel that explicitly reports when no documented mapping has been established.
+No ATT&CK technique, malicious label, threat score or detector probability is
+derived from correlation features.
+
+## Empty-graph investigation and verification
+
+The empty graph was traced with a fresh documented
+`benign_file_operations` simulation. Normalization produced four events under
+`simulation:benign_file_operations`. `LiveDecisionPipeline.process_event()`
+called `BehaviorCorrelationEngine.observe()` for every event, and the
+append-only incident records persisted the full `correlation.relationships`
+array. The final persisted correlation record contained process-to-file,
+file-rename, and event-order relationships with source event IDs and entity
+IDs.
+
+The original graph endpoint correctly handled current records, but the
+dashboard source being inspected contained older incident records written
+before explicit `source_entity_id` and `target_entity_id` fields were added.
+The API therefore skipped those legacy relationships because the previous
+projection required entity endpoints. This presented as “no relationship
+graph” even though the correlation evidence was present in incident records.
+It was an API compatibility/projection defect, not a simulation or correlation
+failure.
+
+`GET /api/graph` now deterministically projects supported legacy relationship
+types from their stored relationship details. It never turns a self-referential
+event pair into an edge. Unsupported or insufficiently described relationships
+remain omitted and are reported as limitations.
+
+Fresh simulation verification produced:
+
+- normalized events: 4
+- capture contexts: 1 (`simulation:benign_file_operations`)
+- graph nodes: 7
+- graph edges: 18
+- edges with resolvable source and target nodes: 18
+- edges with source event provenance: 18
+- graph schema: `schema-behavior-correlation-v1`
+- source event types: `FILE_OPEN`, `FILE_CLOSE`, `FILE_RENAME`, `FILE_DELETE`
+- decision output: 4 `ABSTAIN`, unavailable detector, null probability
+
+The graph regression tests also verify legacy relationship projection,
+capture-scoped graph output, non-self-referential edges, and node/edge
+resolvability. The frontend now reports node/relationship counts, clears
+selection and stale graph state on source changes, shows a loading state while
+the graph request is pending, uses a deterministic process/file/network
+layout, and distinguishes “no relationship evidence” from a graph API failure.
+
 ## Scope
 
 Destination: `C:\Users\mu2ce\Documents\ACADEMICS\sem7\finaaal\Real_time_ransomware_detection`

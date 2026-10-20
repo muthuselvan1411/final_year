@@ -81,6 +81,11 @@ def test_parent_child_file_network_correlation_has_exact_provenance() -> None:
     }
     assert all(item.details.get("success") is None for item in result.relationships
                if item.relationship_type == "process_made_network_connection_attempt")
+    for relationship in result.relationships:
+        if relationship.relationship_type != "event_order":
+            assert relationship.source_entity_id
+            assert relationship.target_entity_id
+            assert relationship.source_entity_id != relationship.target_entity_id
 
 
 def test_unrelated_processes_and_contexts_are_not_correlated() -> None:
