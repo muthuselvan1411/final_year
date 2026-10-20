@@ -11,7 +11,7 @@ from math import isfinite
 from typing import Any, Iterable
 
 from .process import build_process_context
-from .temporal import extract_temporal_features
+from .temporal import extract_temporal_features, select_causal_window_events
 
 EVENT_FEATURE_SCHEMA_ID = "schema-event-window-v1"
 EVENT_FEATURE_NAMES = (
@@ -64,17 +64,11 @@ def extract_event_window_features(
     accompanying mask; they are not silently converted into evidence.
     """
     materialized = list(events)
-    eligible = []
-    for event in materialized:
-        if decision_time is None:
-            eligible.append(event)
-            continue
-        try:
-            timestamp = float(event.get("timestamp"))
-        except (TypeError, ValueError):
-            continue
-        if isfinite(timestamp) and timestamp <= decision_time:
-            eligible.append(event)
+    eligible = select_causal_window_events(
+        materialized,
+        window_seconds=window_seconds,
+        decision_time=decision_time,
+    )
     temporal = extract_temporal_features(
         materialized,
         window_seconds=window_seconds,
@@ -115,11 +109,11 @@ def extract_event_window_features(
             "delete_count",
             "distinct_files",
             "repeated_files",
-            "event_rate",
             "burst_ratio",
             "temporal_consistency",
         )
     }
+    available["event_rate"] = temporal_available and temporal.event_rate is not None
     available.update(
         {
             "distinct_pids": process_available,

@@ -26,7 +26,10 @@ from ransomshield.storage import IncidentStore
 from ransomshield.telemetry.event_features import EventWindowFeatures, extract_event_window_features
 from ransomshield.telemetry.guardfs_features import extract_guardfs_features
 from ransomshield.telemetry.process import build_process_context
-from ransomshield.telemetry.temporal import extract_temporal_features
+from ransomshield.telemetry.temporal import (
+    extract_temporal_features,
+    select_causal_window_events,
+)
 
 
 class EventWindowDetector(Protocol):
@@ -89,9 +92,14 @@ class LiveDecisionPipeline:
         ] = {}
         self._pid_signatures: dict[int, tuple[tuple[Any, ...], int]] = {}
         self._sequence = 0
+        self.last_record: dict[str, Any] | None = None
 
     def process_event(self, event: dict[str, Any]) -> DecisionRecord:
         normalized_event = dict(event)
+        normalized_event.setdefault(
+            "source_event_id", f"rs-runtime-event-{self._sequence}"
+        )
+        normalized_event.setdefault("source_context", "live-pipeline")
         identity, identity_limitations = self._identity(normalized_event)
         self._append_event(identity, normalized_event)
         events = self._causal_events(identity, self._timestamp(normalized_event))
@@ -110,6 +118,28 @@ class LiveDecisionPipeline:
         validate_prediction_record(prediction)
         prediction = self._with_sample_id(prediction, event)
         process = build_process_context(events, decision_time=decision_time)
+        contributing_events = select_causal_window_events(
+            events,
+            window_seconds=self.window_seconds,
+            decision_time=decision_time,
+        )
+        event_ids = tuple(
+            str(item["source_event_id"])
+            for item in contributing_events
+            if item.get("source_event_id") not in (None, "")
+        )
+        timestamp_sources = {
+            str(
+                item.get("extra", {}).get("timestamp_source")
+                or ("kernel_monotonic" if item.get("timestamp_ns") is not None else "event_timestamp")
+            )
+            for item in contributing_events
+        }
+        source_contexts = {
+            str(item.get("source_context"))
+            for item in contributing_events
+            if item.get("source_context")
+        }
         evidence = build_evidence_record(
             prediction,
             temporal_consistency=(
@@ -139,13 +169,42 @@ class LiveDecisionPipeline:
                 )
             ),
             event_window=self._event_window(temporal.window_start, temporal.window_end),
+            feature_schema_id=features.schema_id,
+            feature_values=features.values,
+            supporting_event_ids=event_ids,
+            event_types=tuple(
+                dict.fromkeys(str(item.get("event_type", "OTHER")) for item in contributing_events)
+            ),
+            timestamp_source=",".join(sorted(timestamp_sources)) or None,
+            source_context=",".join(sorted(source_contexts)) or None,
+            detector_status=(
+                "unavailable" if prediction.malicious_probability is None else "validated_prediction"
+            ),
+            decision_basis=(
+                "ABSTAIN: no validated detector probability available"
+                if prediction.malicious_probability is None
+                else "policy evaluation over validated detector output"
+            ),
         )
         decision = self.policy.evaluate_decision(prediction, evidence)
         if self.store is not None:
-            self.store.append(
-                self._record(
-                    normalized_event, features, prediction, evidence, decision
-                )
+            self.last_record = self._record(
+                normalized_event,
+                contributing_events,
+                features,
+                prediction,
+                evidence,
+                decision,
+            )
+            self.store.append(self.last_record)
+        else:
+            self.last_record = self._record(
+                normalized_event,
+                contributing_events,
+                features,
+                prediction,
+                evidence,
+                decision,
             )
         return decision
 
@@ -283,6 +342,7 @@ class LiveDecisionPipeline:
     @staticmethod
     def _record(
         event: dict[str, Any],
+        contributing_events: list[dict[str, Any]],
         features: EventWindowFeatures,
         prediction: PredictionRecord,
         evidence: EvidenceRecord,
@@ -291,7 +351,33 @@ class LiveDecisionPipeline:
         return {
             "record_type": "ransomshield_incident",
             "recorded_at": time.time(),
+            "triggering_event_id": event.get("source_event_id"),
+            "triggering_source_context": event.get("source_context"),
             "event": event,
+            "supporting_event_ids": [
+                str(item["source_event_id"])
+                for item in contributing_events
+                if item.get("source_event_id") not in (None, "")
+            ],
+            "supporting_events": contributing_events,
+            "provenance": {
+                "feature_schema_id": evidence.feature_schema_id,
+                "feature_values": dict(evidence.feature_values),
+                "supporting_event_ids": list(evidence.supporting_event_ids),
+                "supporting_event_count": evidence.supporting_event_count,
+                "window_start": (
+                    evidence.event_window[0].isoformat()
+                    if evidence.event_window is not None
+                    else None
+                ),
+                "window_end": (
+                    evidence.event_window[1].isoformat()
+                    if evidence.event_window is not None
+                    else None
+                ),
+                "timestamp_source": evidence.timestamp_source,
+                "source_context": evidence.source_context,
+            },
             "features": features.to_dict(),
             "prediction": asdict(prediction),
             "evidence": asdict(evidence),

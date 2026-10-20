@@ -2,6 +2,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 #include <signal.h>
 #include <unistd.h>
 #include <time.h>
@@ -16,6 +17,42 @@ static char g_watch_dir[512] = "";
 static FILE *g_out_file = NULL;
 static bool g_stdout_mode = true;
 static unsigned long g_event_count = 0;
+
+struct link_collection {
+    struct bpf_link **items;
+    size_t count;
+    size_t capacity;
+};
+
+static void destroy_links(struct link_collection *links) {
+    if (!links)
+        return;
+
+    for (size_t i = links->count; i > 0; i--) {
+        int err = bpf_link__destroy(links->items[i - 1]);
+        if (err)
+            fprintf(stderr, "Warning: failed to destroy BPF link %zu: %d (%s)\n",
+                    i - 1, err, strerror(-err));
+    }
+    free(links->items);
+    links->items = NULL;
+    links->count = 0;
+    links->capacity = 0;
+}
+
+static int retain_link(struct link_collection *links, struct bpf_link *link) {
+    if (links->count == links->capacity) {
+        size_t new_capacity = links->capacity ? links->capacity * 2 : 8;
+        struct bpf_link **new_items = realloc(
+            links->items, new_capacity * sizeof(*new_items));
+        if (!new_items)
+            return -ENOMEM;
+        links->items = new_items;
+        links->capacity = new_capacity;
+    }
+    links->items[links->count++] = link;
+    return 0;
+}
 
 static void sig_handler(int sig) {
     exiting = true;
@@ -75,10 +112,10 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
         }
     }
 
-    /* Compute precise epoch timestamp */
+    /* CLOCK_REALTIME is receive time, not the event's kernel timestamp. */
     struct timespec ts;
     clock_gettime(CLOCK_REALTIME, &ts);
-    double timestamp = (double)ts.tv_sec + ((double)ts.tv_nsec / 1e9);
+    double receive_timestamp = (double)ts.tv_sec + ((double)ts.tv_nsec / 1e9);
 
     /* Resolve executable binary path if available */
     char exe_path[512] = "";
@@ -107,25 +144,34 @@ static int handle_event(void *ctx, void *data, size_t data_sz) {
         inet_ntop(AF_INET, &addr, ip_str, sizeof(ip_str));
 
         snprintf(json_buf, sizeof(json_buf),
-            "{\"timestamp\": %.6f, \"pid\": %u, \"ppid\": %u, \"process\": \"%s\", "
+            "{\"timestamp\": %.6f, \"timestamp_ns\": %llu, "
+            "\"receive_timestamp\": %.6f, \"pid\": %u, \"ppid\": %u, \"process\": \"%s\", "
             "\"exe\": \"%s\", \"event_type\": \"%s\", \"path\": null, \"bytes\": 0, "
-            "\"dst_ip\": \"%s\", \"dst_port\": %u, \"protocol\": \"TCP\", \"success\": true, "
-            "\"extra\": {}}\n",
-            timestamp, e->pid, e->ppid, esc_comm, esc_exe, ev_type_str, ip_str, e->dst_port);
+            "\"dst_ip\": \"%s\", \"dst_port\": %u, \"protocol\": \"TCP\", \"success\": null, "
+            "\"extra\": {\"success_evidence\": \"unavailable\", "
+            "\"timestamp_source\": \"userspace_receive\"}}\n",
+            receive_timestamp, (unsigned long long)e->timestamp_ns, receive_timestamp,
+            e->pid, e->ppid, esc_comm, esc_exe, ev_type_str, ip_str, e->dst_port);
     } else if (e->event_type == EVENT_FILE_RENAME) {
         snprintf(json_buf, sizeof(json_buf),
-            "{\"timestamp\": %.6f, \"pid\": %u, \"ppid\": %u, \"process\": \"%s\", "
+            "{\"timestamp\": %.6f, \"timestamp_ns\": %llu, "
+            "\"receive_timestamp\": %.6f, \"pid\": %u, \"ppid\": %u, \"process\": \"%s\", "
             "\"exe\": \"%s\", \"event_type\": \"%s\", \"path\": \"%s\", \"bytes\": 0, "
-            "\"dst_ip\": null, \"dst_port\": null, \"protocol\": null, \"success\": true, "
-            "\"extra\": {\"old_path\": \"%s\"}}\n",
-            timestamp, e->pid, e->ppid, esc_comm, esc_exe, ev_type_str, esc_path, esc_old_path);
+            "\"dst_ip\": null, \"dst_port\": null, \"protocol\": null, \"success\": null, "
+            "\"extra\": {\"old_path\": \"%s\", \"success_evidence\": \"unavailable\", "
+            "\"timestamp_source\": \"userspace_receive\"}}\n",
+            receive_timestamp, (unsigned long long)e->timestamp_ns, receive_timestamp,
+            e->pid, e->ppid, esc_comm, esc_exe, ev_type_str, esc_path, esc_old_path);
     } else {
         snprintf(json_buf, sizeof(json_buf),
-            "{\"timestamp\": %.6f, \"pid\": %u, \"ppid\": %u, \"process\": \"%s\", "
+            "{\"timestamp\": %.6f, \"timestamp_ns\": %llu, "
+            "\"receive_timestamp\": %.6f, \"pid\": %u, \"ppid\": %u, \"process\": \"%s\", "
             "\"exe\": \"%s\", \"event_type\": \"%s\", \"path\": \"%s\", \"bytes\": %lld, "
-            "\"dst_ip\": null, \"dst_port\": null, \"protocol\": null, \"success\": true, "
-            "\"extra\": {}}\n",
-            timestamp, e->pid, e->ppid, esc_comm, esc_exe, ev_type_str, esc_path, (long long)e->bytes);
+            "\"dst_ip\": null, \"dst_port\": null, \"protocol\": null, \"success\": null, "
+            "\"extra\": {\"success_evidence\": \"unavailable\", "
+            "\"timestamp_source\": \"userspace_receive\"}}\n",
+            receive_timestamp, (unsigned long long)e->timestamp_ns, receive_timestamp,
+            e->pid, e->ppid, esc_comm, esc_exe, ev_type_str, esc_path, (long long)e->bytes);
     }
 
     g_event_count++;
@@ -148,6 +194,10 @@ int main(int argc, char **argv) {
     const char *out_filename = NULL;
     __u32 collector_pid = getpid();
     __u32 target_pid = 0;
+    struct bpf_object *obj = NULL;
+    struct ring_buffer *rb = NULL;
+    struct link_collection links = {};
+    int exit_code = 1;
 
     for (int i = 1; i < argc; i++) {
         if (strcmp(argv[i], "--watch-dir") == 0 && i + 1 < argc) {
@@ -185,35 +235,71 @@ int main(int argc, char **argv) {
         }
     }
 
-    struct bpf_object *obj = bpf_object__open_file(bpf_file, NULL);
-    if (!obj) {
-        fprintf(stderr, "Failed to open BPF object '%s': %s\n", bpf_file, strerror(errno));
-        return 1;
+    obj = bpf_object__open_file(bpf_file, NULL);
+    long open_err = libbpf_get_error(obj);
+    if (open_err || !obj) {
+        if (open_err) {
+            fprintf(stderr, "Failed to open BPF object '%s': %ld (%s)\n",
+                    bpf_file, open_err, strerror((int)-open_err));
+        } else {
+            fprintf(stderr, "Failed to open BPF object '%s': %s\n",
+                    bpf_file, strerror(errno));
+        }
+        obj = NULL;
+        goto cleanup;
     }
 
     int err = bpf_object__load(obj);
     if (err) {
         fprintf(stderr, "Failed to load BPF object: %d (%s)\n", err, strerror(-err));
-        bpf_object__close(obj);
-        return 1;
+        goto cleanup;
     }
 
     /* Configure config_map */
     struct bpf_map *cfg_map = bpf_object__find_map_by_name(obj, "config_map");
-    if (cfg_map) {
+    if (!cfg_map) {
+        fprintf(stderr, "Failed to find required 'config_map' map\n");
+        goto cleanup;
+    } else {
         int cfg_fd = bpf_map__fd(cfg_map);
         __u32 k0 = 0, k1 = 1;
-        bpf_map_update_elem(cfg_fd, &k0, &collector_pid, BPF_ANY);
-        bpf_map_update_elem(cfg_fd, &k1, &target_pid, BPF_ANY);
+        if (cfg_fd < 0) {
+            fprintf(stderr, "Failed to get config_map file descriptor: %d (%s)\n",
+                    cfg_fd, strerror(-cfg_fd));
+            goto cleanup;
+        }
+        if (bpf_map_update_elem(cfg_fd, &k0, &collector_pid, BPF_ANY) < 0) {
+            fprintf(stderr, "Failed to set config_map[0] collector PID: %s\n",
+                    strerror(errno));
+            goto cleanup;
+        }
+        if (bpf_map_update_elem(cfg_fd, &k1, &target_pid, BPF_ANY) < 0) {
+            fprintf(stderr, "Failed to set config_map[1] target PID: %s\n",
+                    strerror(errno));
+            goto cleanup;
+        }
     }
 
     /* Attach all BPF programs */
     struct bpf_program *prog;
     bpf_object__for_each_program(prog, obj) {
         struct bpf_link *link = bpf_program__attach(prog);
-        if (!link) {
-            fprintf(stderr, "Warning: failed to attach program '%s': %s\n",
-                    bpf_program__name(prog), strerror(errno));
+        long link_err = libbpf_get_error(link);
+        if (!link || link_err) {
+            if (link_err)
+                fprintf(stderr, "Failed to attach required program '%s': %ld (%s)\n",
+                        bpf_program__name(prog), link_err, strerror((int)-link_err));
+            else
+                fprintf(stderr, "Failed to attach required program '%s': %s\n",
+                        bpf_program__name(prog), strerror(errno));
+            goto cleanup;
+        }
+        err = retain_link(&links, link);
+        if (err) {
+            fprintf(stderr, "Failed to retain link for program '%s': %d (%s)\n",
+                    bpf_program__name(prog), err, strerror(-err));
+            bpf_link__destroy(link);
+            goto cleanup;
         }
     }
 
@@ -221,15 +307,19 @@ int main(int argc, char **argv) {
     struct bpf_map *rb_map = bpf_object__find_map_by_name(obj, "rb");
     if (!rb_map) {
         fprintf(stderr, "Failed to find 'rb' ring buffer map\n");
-        bpf_object__close(obj);
-        return 1;
+        goto cleanup;
     }
 
-    struct ring_buffer *rb = ring_buffer__new(bpf_map__fd(rb_map), handle_event, NULL, NULL);
+    int rb_fd = bpf_map__fd(rb_map);
+    if (rb_fd < 0) {
+        fprintf(stderr, "Failed to get rb map file descriptor: %d (%s)\n",
+                rb_fd, strerror(-rb_fd));
+        goto cleanup;
+    }
+    rb = ring_buffer__new(rb_fd, handle_event, NULL, NULL);
     if (!rb) {
         fprintf(stderr, "Failed to create ring buffer\n");
-        bpf_object__close(obj);
-        return 1;
+        goto cleanup;
     }
 
     fprintf(stderr, "[+] RansomShield eBPF Sensor loaded successfully.\n");
@@ -243,8 +333,14 @@ int main(int argc, char **argv) {
 
     while (!exiting) {
         err = ring_buffer__poll(rb, 100 /* ms */);
-        if (err < 0 && err != -EINTR) {
+        if (err == -EINTR) {
+            if (exiting)
+                break;
+            continue;
+        }
+        if (err < 0) {
             fprintf(stderr, "Error polling ring buffer: %d\n", err);
+            exit_code = 1;
             break;
         }
     }
@@ -253,10 +349,16 @@ int main(int argc, char **argv) {
     ring_buffer__consume(rb);
 
     fprintf(stderr, "\n[*] Shutting down sensor. Total events captured: %lu\n", g_event_count);
-    ring_buffer__free(rb);
-    bpf_object__close(obj);
+    if (err >= 0 || (err == -EINTR && exiting))
+        exit_code = 0;
+
+cleanup:
+    if (rb)
+        ring_buffer__free(rb);
+    destroy_links(&links);
+    if (obj)
+        bpf_object__close(obj);
     if (g_out_file)
         fclose(g_out_file);
-
-    return 0;
+    return exit_code;
 }

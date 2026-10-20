@@ -110,6 +110,52 @@ merge potentially reused PIDs.
 - Containment remains advisory through the existing policy contract.
 - The collector hook is opt-in through `--decision-output`.
 
+## eBPF loader hardening and output semantics
+
+Before a WSL2 live test, `ebpf/sensor_loader.c` was hardened without running
+or rebuilding the loader:
+
+- Every successful `bpf_program__attach()` result is retained until shutdown.
+- Any required attachment failure reports the program name and libbpf error,
+  suppresses the successful-startup message, and cleans up earlier links.
+- Ring-buffer and link cleanup now occurs on normal shutdown and startup
+  failure paths before closing the BPF object.
+- Both `config_map` updates are checked and reported.
+- The loader no longer asserts `success: true`: the current kernel event has
+  no syscall return/result field, so output uses `success: null` and
+  `extra.success_evidence: "unavailable"`.
+- Output retains the existing `timestamp` field for compatibility, but adds
+  `timestamp_ns` for the kernel monotonic timestamp and
+  `receive_timestamp` for the userspace `CLOCK_REALTIME` receive time.
+  `extra.timestamp_source` identifies the legacy `timestamp` as
+  `userspace_receive`; it must not be treated as the exact operation time.
+- The Python schema and normalizer preserve nullable success and the timestamp
+  fields instead of converting missing success evidence to `false` or dropping
+  the kernel timestamp.
+
+The sensor currently emits enter-side operation events and does not include
+syscall return values in `struct event_t`. A future success/failure claim
+requires adding and validating return-result capture in the kernel/user-space
+contract; this change intentionally does not infer it from requested byte
+counts or event types.
+
+## Focused verification plan
+
+The loader was not run and no BPF programs were attached. On a supported WSL2
+Linux environment, compile to temporary paths and then verify:
+
+1. Force an attachment failure with a deliberately incompatible test object
+   or unavailable tracepoint; confirm the failing program name is printed,
+   the startup success line is absent, and previously attached links are
+   destroyed.
+2. Force a `config_map` update failure or invalid map fixture; confirm startup
+   stops with the map index and error.
+3. Interrupt a successful run; confirm ring-buffer cleanup, explicit link
+   destruction, and object close occur without a resource error.
+4. Parse emitted JSONL and assert `timestamp_ns` is present, `receive_timestamp`
+   is distinct, `extra.timestamp_source` is `userspace_receive`, and
+   `success` is null unless a future event contract supplies measured results.
+
 ## Tests and verification
 
 ### Unit tests
@@ -208,3 +254,201 @@ with the default detector should remain `ABSTAIN`.
 5. The source validation scripts contain unsafe behavior and were intentionally
    not imported.
 6. No live accuracy or performance claim is justified.
+
+## Full captured-log replay
+
+Added `scripts/replay_live_jsonl.py` for incremental replay through the actual
+normalizer, live pipeline, unavailable detector, advisory policy, and
+`IncidentStore`. It refuses to overwrite an existing `incidents.jsonl` or
+`replay_summary.json` output.
+
+The captured WSL2 log was replayed with:
+
+```bash
+PYTHONPATH=src python3 scripts/replay_live_jsonl.py \
+  /tmp/ransomshield-live-test/events.jsonl \
+  /tmp/ransomshield-live-test/replay_validation_20261020
+```
+
+Verified result:
+
+```text
+input_lines: 482
+valid_json_records: 482
+processed_events: 482
+malformed_json_records: 0
+normalization_failures: 0
+pipeline_failures: 0
+storage_failures: 0
+incident_records_written: 482
+decision_counts: {"ABSTAIN": 482}
+```
+
+Observed event counts were:
+
+```text
+PROCESS_EXIT: 366
+PROCESS_EXEC: 104
+NET_CONNECT: 6
+FILE_OPEN: 2
+FILE_CLOSE: 2
+FILE_RENAME: 1
+FILE_DELETE: 1
+```
+
+Replay output was written outside the repository to
+`/tmp/ransomshield-live-test/replay_validation_20261020/`. This is functional
+pipeline validation only. It does not validate kernel attachment, event-loss
+rates, syscall-result accuracy, detection efficacy, or production readiness.
+
+## Safe simulation lab
+
+Added `scripts/run_safe_simulation.py` with two deterministic in-memory
+scenarios:
+
+- `benign_file_operations`: open, close, rename, and delete-shaped events.
+- `synthetic_rapid_file_burst`: twelve rapid rename-shaped events across
+  distinct paths.
+
+No filesystem operations are performed by these scenarios. Both use the same
+normalizer, live pipeline, unavailable detector, advisory policy, and optional
+incident store as captured events.
+
+Executed successfully:
+
+```text
+python scripts/run_safe_simulation.py --scenario benign_file_operations \
+  --output-dir C:\Windows\Temp\ransomshield-simulation-benign
+Events: 4/4
+Decisions: {'ABSTAIN': 4}
+Processing failures: 0
+
+python scripts/run_safe_simulation.py --scenario synthetic_rapid_file_burst \
+  --output-dir C:\Windows\Temp\ransomshield-simulation-burst
+Events: 12/12
+Decisions: {'ABSTAIN': 12}
+Processing failures: 0
+```
+
+The Rich terminal dashboard remains the existing local dashboard. Its activity
+labels now say `ADVISORY ONLY`, `BURST OBSERVED`, or `ELEVATED ACTIVITY
+OBSERVED`; it no longer labels activity as a threat-level detection. There is
+no HTTP API or browser frontend in this repository, so those requested surfaces
+remain unimplemented rather than being represented by fabricated data.
+## Evidence traceability milestone
+
+The live pipeline now assigns every normalized event a scoped
+`source_event_id`. A supplied sensor ID is retained. When no ID exists, the
+normalizer hashes the canonical captured record together with a source context
+and occurrence index. Live collection, replay, and simulation use distinct
+contexts. The strategy distinguishes duplicate occurrences within a capture,
+but does not claim global identity across independent captures.
+
+Each incident persists the exact bounded causal event set used for feature
+calculation, including supporting IDs, event types, source context, timestamp
+source, feature schema and values, window boundaries, detector status, decision
+basis, and limitations. Events excluded by invalid timestamps, causal cutoffs,
+or process-identity isolation are not included in the supporting set.
+
+The Rich dashboard now provides a bounded Recent Evidence Decisions panel. It
+shows event IDs, decision state, feature schema, supporting-event count, and
+source context while retaining the existing activity view. Malformed stored
+JSONL lines are skipped rather than crashing the dashboard.
+The read-only `scripts/inspect_incident.py` command provides complete incident
+detail, including the triggering event, supporting events, ordered feature
+values, window, decision basis, detector status, and limitations.
+
+The previously inspected WSL replay file was generated before this provenance
+change, so its absence of supporting IDs is expected for that historical
+artifact. In the capture, PID 5956 had `PROCESS_EXEC` under `bash`, then
+`FILE_RENAME` under `mv`, then `PROCESS_EXIT` under `mv`. Because no stable
+process-instance ID or start time was available, the PID-generation fallback
+isolated the rename after the process signature changed. Its one-event window
+is therefore conservative and intentional. For a one-event window,
+`event_rate` is `0.0` because elapsed duration is zero, while
+`burst_ratio` is `1.0` because the single observed path occurs once out of one
+event. Neither value is inferred as a detection.
+
+The unavailable detector remains unchanged: it produces
+`malicious_probability: null` and the advisory policy returns `ABSTAIN`.
+Traceability and visualization explain observed evidence and pipeline behavior;
+they do not establish live ransomware detection efficacy. The frozen MLRan
+483-feature schema remains separate.
+
+### Traceability verification
+
+Commands executed:
+
+```text
+python -m pytest tests/test_evidence_traceability.py tests/test_event_features.py tests/test_live_pipeline.py tests/test_captured_live_replay.py -q
+python -m pytest -q
+python -m compileall -q collector schema src scripts tests
+git diff --check
+wsl.exe -d Ubuntu -- bash -lc "cd /mnt/c/Users/mu2ce/Documents/ACADEMICS/sem7/finaaal/Real_time_ransomware_detection && PYTHONPATH=src python3 scripts/replay_live_jsonl.py /tmp/ransomshield-live-test/events.jsonl /tmp/ransomshield-live-test/replay_validation_20261020_traceability"
+```
+
+Results:
+
+- Focused provenance and replay tests: **26 passed**.
+- Full Python suite: **78 passed**.
+- Python syntax compilation: **passed**.
+- `git diff --check`: **passed**.
+- Captured replay: **482 input lines, 482 processed, 0 malformed,
+  0 normalization failures, 0 pipeline failures, 0 storage failures,
+  482 incidents, 482 ABSTAIN decisions**.
+- The new replay output contains `triggering_event_id`,
+  `triggering_source_context`, `supporting_event_ids`, `supporting_events`, and
+  the dedicated `provenance` object.
+
+## Temporal feature and process-window audit
+
+`schema-event-window-v1` uses the following definitions over the sorted,
+timestamp-valid, causal events selected by `select_causal_window_events`:
+
+- `observation_count`: number of selected events, including non-file events;
+  unit: events.
+- `distinct_files`: number of distinct non-empty `path` values; unit: unique
+  paths. Rename source paths in `extra.old_path` are not counted as separate
+  paths because the feature operates on the normalized `path` field.
+- `repeated_files`: number of distinct paths whose occurrence count is greater
+  than one, not the number of repeated occurrences; unit: paths.
+- `event_rate`: `observation_count / (window_end - window_start)`; unit:
+  events per second. With zero elapsed duration the underlying temporal value
+  is unavailable; the numeric feature vector retains `0.0` as a compatibility
+  sentinel and its availability mask is now `false`.
+- `burst_ratio`: `max(path occurrence count) / observation_count`; unit:
+  dimensionless ratio. It is `1.0` for one event or when all events reference
+  the same path. It is unavailable when there are no valid events.
+
+The extractor sorts out-of-order valid timestamps before calculating these
+values. Non-numeric and non-finite timestamps are excluded. Events later than
+`decision_time` are excluded. The selected window begins at the earliest
+eligible timestamp and ends at the last eligible timestamp, capped at
+`window_start + window_seconds`.
+
+The captured harmless WSL2 log contains two FILE_OPEN/FILE_CLOSE pairs:
+
+- PID 5827: `1792481020.200291` to `1792481020.200307`, duration
+  `0.000016` seconds, rate `2 / 0.000016 = 125000 events/second`.
+- PID 5950: `1792481020.211776` to `1792481020.211935`, duration
+  `0.000159` seconds, rate approximately `12578.616 events/second`.
+
+Both pairs have `observation_count=2`, `distinct_files=1`,
+`repeated_files=1`, and `burst_ratio=1.0`. These are arithmetic properties
+of the timestamps and paths, not detection results.
+
+Process-aware live decisions isolate events by explicit instance identity when
+available, otherwise by PID generation keyed by `(ppid, process, exe)`.
+This prevents unrelated processes from contributing to one process's features,
+but can split a related operation sequence when a command changes process
+metadata or when one process delegates work to a child. The captured PID 5956
+rename is an example: `bash` execution and `mv` rename were separated
+conservatively.
+
+A bounded causal time window across processes could complement this design as a
+separate correlation view, but must not replace per-process evidence or feed a
+single-process feature vector. A safe future design would retain per-process
+windows as the authoritative detector input and compute an explicitly labeled
+cross-process summary keyed by parent/process relationships, with its own
+supporting-event IDs, causal cutoff, identity limitations, and tests for
+unrelated-process non-mixing. It is not implemented in this milestone.

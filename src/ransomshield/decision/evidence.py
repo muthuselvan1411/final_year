@@ -38,6 +38,14 @@ def build_evidence_record(
     process_context: Mapping[str, str | int | None] | None = None,
     evidence_summary: tuple[str, ...] = (),
     limitations: tuple[str, ...] = (),
+    feature_schema_id: str | None = None,
+    feature_values: Mapping[str, float] | None = None,
+    supporting_event_ids: tuple[str, ...] = (),
+    event_types: tuple[str, ...] = (),
+    timestamp_source: str | None = None,
+    source_context: str | None = None,
+    detector_status: str | None = None,
+    decision_basis: str | None = None,
 ) -> EvidenceRecord:
     """
     Builds a validated EvidenceRecord.
@@ -82,6 +90,15 @@ def build_evidence_record(
         process_context=process_context or {},
         evidence_summary=evidence_summary,
         limitations=limitations,
+        feature_schema_id=feature_schema_id,
+        feature_values=dict(feature_values or {}),
+        supporting_event_ids=supporting_event_ids,
+        supporting_event_count=len(supporting_event_ids),
+        event_types=event_types,
+        timestamp_source=timestamp_source,
+        source_context=source_context,
+        detector_status=detector_status,
+        decision_basis=decision_basis,
     )
     validate_evidence_record(rec)
     return rec

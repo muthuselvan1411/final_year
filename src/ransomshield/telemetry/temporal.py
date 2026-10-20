@@ -27,6 +27,33 @@ class TemporalFeatures:
     unavailable_reason: str | None = None
 
 
+def select_causal_window_events(
+    events: Iterable[dict[str, Any]],
+    *,
+    window_seconds: float = 10.0,
+    decision_time: float | None = None,
+) -> list[dict[str, Any]]:
+    """Return exactly the timestamped events used by temporal features."""
+    if window_seconds <= 0 or not isfinite(window_seconds):
+        raise ValueError("window_seconds must be finite and greater than zero")
+    valid = []
+    for event in events:
+        try:
+            timestamp = float(event.get("timestamp"))
+        except (TypeError, ValueError):
+            continue
+        if isfinite(timestamp) and (
+            decision_time is None or timestamp <= decision_time
+        ):
+            valid.append((timestamp, event))
+    if not valid:
+        return []
+    valid.sort(key=lambda item: item[0])
+    start = valid[0][0]
+    end = min(valid[-1][0], start + window_seconds)
+    return [event for timestamp, event in valid if timestamp <= end]
+
+
 def extract_temporal_features(
     events: Iterable[dict[str, Any]],
     *,
@@ -43,28 +70,22 @@ def extract_temporal_features(
     if window_seconds <= 0 or not isfinite(window_seconds):
         raise ValueError("window_seconds must be finite and greater than zero")
 
-    valid = []
-    for event in events:
-        timestamp = event.get("timestamp")
-        try:
-            timestamp = float(timestamp)
-        except (TypeError, ValueError):
-            continue
-        if isfinite(timestamp) and (
-            decision_time is None or timestamp <= decision_time
-        ):
-            valid.append((timestamp, event))
-
-    if not valid:
+    materialized = list(events)
+    window_events = select_causal_window_events(
+        materialized, window_seconds=window_seconds, decision_time=decision_time
+    )
+    if not window_events:
         return TemporalFeatures(
             None, None, 0, 0, 0, 0, 0, 0, None, None, None,
             "no valid event timestamps",
         )
 
-    valid.sort(key=lambda item: item[0])
-    start = valid[0][0]
-    end = min(valid[-1][0], start + window_seconds)
-    window = [(ts, event) for ts, event in valid if ts <= end]
+    window = sorted(
+        ((float(event["timestamp"]), event) for event in window_events),
+        key=lambda item: item[0],
+    )
+    start = window[0][0]
+    end = window[-1][0]
     paths = [
         str(event.get("path"))
         for _, event in window

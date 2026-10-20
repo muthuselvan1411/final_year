@@ -76,7 +76,14 @@ def main():
         cmd.extend(["--target-pid", str(args.target_pid)])
 
     normalizer = EventNormalizer(compute_entropy=not args.no_entropy)
-    dashboard = TelemetryDashboard(watch_dir=args.watch_dir) if args.dashboard else None
+    dashboard = (
+        TelemetryDashboard(
+            watch_dir=args.watch_dir,
+            incident_path=args.decision_output,
+        )
+        if args.dashboard
+        else None
+    )
     pipeline = (
         LiveDecisionPipeline(store=IncidentStore(args.decision_output))
         if args.decision_output
@@ -115,18 +122,23 @@ def main():
 
     if args.dashboard:
         with Live(dashboard.render(), refresh_per_second=4, screen=False) as live:
-            for line in proc.stdout:
+            for line_number, line in enumerate(proc.stdout, 1):
                 line = line.strip()
                 if not line or not line.startswith("{"):
                     continue
                 try:
                     raw_data = json.loads(line)
-                    normalized = normalizer.normalize(raw_data)
+                    normalized = normalizer.normalize(
+                        raw_data,
+                        source_context=f"live:{out_path.resolve()}",
+                        occurrence_index=line_number,
+                    )
                     # Write to dataset file
                     out_file.write(json.dumps(normalized) + "\n")
                     out_file.flush()
                     if pipeline is not None:
                         pipeline.process_event(normalized)
+                        dashboard.push_incident(pipeline.last_record)
 
                     # Update UI
                     dashboard.push_event(normalized)
@@ -134,13 +146,17 @@ def main():
                 except json.JSONDecodeError:
                     continue
     else:
-        for line in proc.stdout:
+        for line_number, line in enumerate(proc.stdout, 1):
             line = line.strip()
             if not line or not line.startswith("{"):
                 continue
             try:
                 raw_data = json.loads(line)
-                normalized = normalizer.normalize(raw_data)
+                normalized = normalizer.normalize(
+                    raw_data,
+                    source_context=f"live:{out_path.resolve()}",
+                    occurrence_index=line_number,
+                )
                 out_file.write(json.dumps(normalized) + "\n")
                 out_file.flush()
                 if pipeline is not None:

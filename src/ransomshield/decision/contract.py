@@ -64,6 +64,15 @@ class EvidenceRecord:
     process_context: Mapping[str, str | int | None] = field(default_factory=dict)
     evidence_summary: Tuple[str, ...] = ()
     limitations: Tuple[str, ...] = ()
+    feature_schema_id: str | None = None
+    feature_values: Mapping[str, float] = field(default_factory=dict)
+    supporting_event_ids: Tuple[str, ...] = ()
+    supporting_event_count: int = 0
+    event_types: Tuple[str, ...] = ()
+    timestamp_source: str | None = None
+    source_context: str | None = None
+    detector_status: str | None = None
+    decision_basis: str | None = None
 
 
 @dataclass(frozen=True)

@@ -1,5 +1,7 @@
 import time
+import json
 from collections import deque, defaultdict
+from pathlib import Path
 from typing import Dict, Any, List
 from rich.console import Console
 from rich.layout import Layout
@@ -13,7 +15,12 @@ class TelemetryDashboard:
     Polished Real-Time Terminal Dashboard (TUI) for RansomShield eBPF Sensor.
     Provides live throughput meters, active process tracking, and event stream visualization.
     """
-    def __init__(self, watch_dir: str = "", max_history: int = 12):
+    def __init__(
+        self,
+        watch_dir: str = "",
+        max_history: int = 12,
+        incident_path: str | Path | None = None,
+    ):
         self.watch_dir = watch_dir
         self.max_history = max_history
         self.start_time = time.time()
@@ -32,6 +39,9 @@ class TelemetryDashboard:
 
         # Recent events for display
         self.recent_events: deque[Dict[str, Any]] = deque(maxlen=max_history)
+        self.recent_incidents: deque[Dict[str, Any]] = deque(maxlen=max_history)
+        if incident_path is not None:
+            self._load_incidents(Path(incident_path))
 
     def push_event(self, event: Dict[str, Any]):
         """Ingests a new normalized event and updates metrics."""
@@ -66,6 +76,27 @@ class TelemetryDashboard:
             pstat["deletes"] += 1
 
         self.recent_events.append(event)
+
+    def push_incident(self, incident: Dict[str, Any] | None):
+        """Add one persisted-style incident without making the UI authoritative."""
+        if isinstance(incident, dict):
+            self.recent_incidents.append(incident)
+
+    def _load_incidents(self, path: Path) -> None:
+        """Load bounded incident history; malformed lines remain observable."""
+        if not path.is_file():
+            return
+        try:
+            with path.open(encoding="utf-8") as handle:
+                for line in deque(handle, maxlen=self.max_history):
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if isinstance(record, dict):
+                        self.recent_incidents.append(record)
+        except OSError:
+            return
 
     def _purge_old_timestamps(self, window_sec: float = 5.0):
         cutoff = time.time() - window_sec
@@ -111,17 +142,20 @@ class TelemetryDashboard:
 
         w_style = "bold red" if write_rate >= 30.0 else ("yellow" if write_rate >= 10.0 else "green")
         r_style = "bold red" if rename_rate >= 10.0 else ("yellow" if rename_rate >= 3.0 else "green")
-        threat_text = "[bold green]NORMAL[/]"
+        threat_text = "[bold yellow]ADVISORY ONLY[/]"
         if write_rate >= 30.0 or rename_rate >= 10.0:
-            threat_text = "[bold red blink]CRITICAL / BURST DETECTED[/]"
+            threat_text = "[bold red]BURST OBSERVED[/]"
         elif write_rate >= 10.0 or rename_rate >= 3.0:
-            threat_text = "[bold yellow]ELEVATED ACTIVITY[/]"
+            threat_text = "[bold yellow]ELEVATED ACTIVITY OBSERVED[/]"
 
         metrics_table.add_row(
             Panel(f"[bold cyan]{overall_rate:.1f}[/] ops/sec\n[dim]Kernel Throughput[/]", title="Event Rate"),
             Panel(f"[{w_style}]{write_rate:.1f}[/] writes/sec\n[dim]R1 Threshold: 30.0/s[/]", title="Write Burst Rate"),
             Panel(f"[{r_style}]{rename_rate:.1f}[/] renames/sec\n[dim]R2 Threshold: 10.0/s[/]", title="Rename Burst Rate"),
-            Panel(f"{threat_text}\n[dim]Live Heuristic Alarm[/]", title="Sensor Threat Level"),
+            Panel(
+                f"{threat_text}\n[dim]No validated detector; policy may ABSTAIN[/]",
+                title="Telemetry Activity",
+            ),
         )
         layout["metrics"].update(metrics_table)
 
@@ -189,6 +223,38 @@ class TelemetryDashboard:
                 str(s["deletes"]),
             )
 
-        layout["processes"].update(Panel(proc_table, title="[bold]Active Process Tree[/]", border_style="green"))
+        incident_table = Table(expand=True, box=None, header_style="bold yellow")
+        incident_table.add_column("Event ID", width=16)
+        incident_table.add_column("Decision", width=10)
+        incident_table.add_column("Evidence", width=10)
+        incident_table.add_column("Features", width=8)
+        incident_table.add_column("Source", ratio=1)
+        for incident in reversed(self.recent_incidents):
+            event = incident.get("event", {})
+            evidence = incident.get("evidence", {})
+            event_id = str(event.get("source_event_id", "unavailable"))[-16:]
+            decision = incident.get("decision", {}).get("action", "unavailable")
+            source = evidence.get("source_context") or event.get("source_context") or "unavailable"
+            incident_table.add_row(
+                event_id,
+                str(decision),
+                str(evidence.get("supporting_event_count", 0)),
+                str(evidence.get("feature_schema_id", "unavailable")),
+                str(source)[-24:],
+            )
+
+        process_layout = Layout(name="process_content")
+        process_layout.split_column(
+            Layout(Panel(proc_table, title="[bold]Active Process Tree[/]", border_style="green")),
+            Layout(
+                Panel(
+                    incident_table,
+                    title="[bold]Recent Evidence Decisions[/]",
+                    border_style="yellow",
+                ),
+                size=8,
+            ),
+        )
+        layout["processes"].update(process_layout)
 
         return layout
