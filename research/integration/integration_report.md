@@ -1,5 +1,49 @@
 # RansomShield friend-project integration report
 
+## Dashboard redesign and duplicate-row audit
+
+The browser dashboard now has four evidence-first views: Live Monitoring,
+Behavioral Analysis, Incident Investigation, and Event Explorer. The API remains
+read-only over configured JSONL stores. Behavioral Analysis displays only
+persisted `schema-behavior-correlation-v1` relationships and feature
+availability masks; it does not reconstruct a graph or run a classifier in the
+browser. The source kind (`live`, `replay`, or `simulation`), detector status,
+null malicious probability, and `ABSTAIN` policy state remain visible.
+
+The reported four-event/eight-incident symptom was traced to
+`scripts/run_safe_simulation.py`: `IncidentStore` is append-only and the
+simulation previously reused an existing output directory, so a second run
+appended the same four source IDs. This was not React rendering or an API
+pagination artifact. Simulation output now refuses to reuse an existing
+`incidents.jsonl` or summary. For already-created stores, the API collapses only
+exact duplicate rows using source context, source event ID, event payload, and
+decision; distinct source IDs and conflicting payloads remain separate and an
+integrity message reports the collapse.
+
+`POST /api/test-simulation` runs the existing harmless four-event scenario
+through `EventNormalizer`, `LiveDecisionPipeline`, and
+`BehaviorCorrelationEngine` in memory. It creates no sensor output, incident
+file, filesystem operation, containment action, or detector probability. The
+verified result is four events, four `ABSTAIN` decisions, unavailable detector,
+and persisted-style correlation records in the response.
+
+Validation for this redesign:
+
+- `PYTHONPATH=src python -m pytest -q`: 99 passed, one existing Starlette/httpx deprecation warning.
+- `PYTHONPATH=src python -m pytest -q tests/test_dashboard_api.py tests/test_safe_simulation.py`: 7 passed.
+- `python -m compileall -q collector dashboard schema src scripts tests`: passed.
+- `git diff --check`: passed; Git reported only existing line-ending notices.
+- `cd dashboard/web; npm test`: 1 passed.
+- `cd dashboard/web; npm run build`: passed; no bundle-size warning after the redesign.
+
+The live sensor-to-browser path remains configuration-dependent:
+`ebpf/sensor_loader -> collector/collector.py -> normalizer -> live pipeline ->
+incident JSONL -> dashboard/api.py -> React`. The live collector creates one
+stable session context per process, but no new kernel live capture was claimed
+in this validation. Recorded replay and harmless simulation are verified;
+live-sensor freshness and browser delivery require a configured running
+collector and decision output.
+
 ## Scope
 
 Destination: `C:\Users\mu2ce\Documents\ACADEMICS\sem7\finaaal\Real_time_ransomware_detection`
@@ -452,3 +496,207 @@ windows as the authoritative detector input and compute an explicitly labeled
 cross-process summary keyed by parent/process relationships, with its own
 supporting-event IDs, causal cutoff, identity limitations, and tests for
 unrelated-process non-mixing. It is not implemented in this milestone.
+
+## Behavioral correlation engine
+
+The project now includes a separate, evidence-only correlation layer in
+`src/ransomshield/telemetry/behavior_correlation.py`. Its schema is
+`schema-behavior-correlation-v1`; it does not modify
+`schema-event-window-v1`, the frozen `schema-mlran-rfe-483` schema, the
+detector interface, or the advisory policy.
+
+The data flow is:
+
+```text
+normalized event
+  -> LiveDecisionPipeline
+  -> per-process schema-event-window-v1 features (unchanged)
+  -> BehaviorCorrelationEngine capture-scoped bounded state
+  -> correlation result and relationship provenance
+  -> EvidenceRecord and IncidentStore JSONL
+  -> existing detector/policy path (unchanged)
+```
+
+`BehaviorCorrelationEngine` partitions state by `source_context`, retains at
+most the configured event count per context, limits the number of contexts,
+and applies a bounded causal window. Events without a source context are
+isolated to their own observation context rather than correlated with other
+captures.
+
+Kernel `timestamp_ns` is preferred for ordering when valid. Events without a
+matching valid kernel timestamp are not mixed into that ordering view. When
+kernel time is unavailable, a finite event timestamp is used. Future events,
+invalid timestamps, and events outside the configured window are excluded.
+Original event timestamps remain in the supporting event payloads, and the
+result records `timestamp_source`, `timestamp_unit`, and window boundaries.
+Equal source event IDs are not deduplicated; separate observations remain
+separate and are ordered deterministically by arrival sequence.
+
+Cross-process correlation is intentionally conservative. A process can be
+included with another process only when both are in the same capture context
+and valid `pid`/`ppid` metadata supports a parent-child relationship. Time
+proximity alone does not connect unrelated processes. The engine records
+`process_spawned_by`, `process_performed_file_operation`,
+`process_made_network_connection_attempt`, `file_rename_observed`, and
+timestamp-supported `event_order` relationships. Network relationships record
+destination evidence and preserve `success: null`; they do not claim that a
+connection succeeded.
+
+The initial descriptive features are:
+
+| Feature | Definition and units | Missing/unavailable behavior |
+|---|---|---|
+| `observation_count` | Supporting observations; events | Unavailable with no causal observations |
+| `operation_type_diversity` | Count of distinct event types; types | Unavailable with no observations |
+| `related_process_count` | Count of connected process IDs; processes | Unavailable with no observations |
+| `parent_child_relationship_count` | Supported parent-child edges; edges | Unavailable when no edge is observed |
+| `file_operation_count` | Supported file operation events; events | Unavailable with no observations |
+| `network_activity_count` | Network connection/destination events; events | Unavailable with no observations |
+| `rename_count` / `delete_count` | Rename/delete events; events | Unavailable with no observations |
+| `distinct_file_paths` | Distinct observed non-empty paths; paths | Unavailable with no observations |
+| `repeated_file_paths` | Distinct paths occurring more than once; paths | Unavailable with no observations |
+| `cross_process_activity` | Whether more than one connected process is present; boolean encoded numerically | Unavailable for a single-process view |
+| `file_network_temporal_relation` | Whether file and network observations have a bounded causal relationship; boolean encoded numerically | Unavailable if either modality is absent |
+| `process_identity_quality` | Whether every supporting event has a valid positive PID; boolean encoded numerically | Unavailable with no observations |
+
+Every persisted correlation result includes its schema ID, capture context,
+triggering event ID, exact supporting IDs, relationship records, feature
+values and availability mask, window bounds, timestamp source/unit, ordering
+IDs, limitations, and correlation rationale. The same correlation metadata is
+also exposed in the `EvidenceRecord`.
+
+The new layer remains a behavioral organization mechanism, not a ransomware
+classifier. With the default unavailable detector, persisted records continue
+to contain `malicious_probability: null` and the policy continues to return
+`ABSTAIN`. No correlation feature is mapped to the MLRan 483-feature model.
+
+Focused tests cover parent-child file/network correlation, unrelated-process
+and capture isolation, invalid/future/out-of-order timestamps, duplicate IDs,
+missing identities, bounded expiry, deterministic relationship provenance,
+IncidentStore persistence, and unchanged unavailable-detector behavior.
+These tests use harmless synthetic events and do not establish live-sensor
+detection efficacy.
+
+Validation performed for this milestone:
+
+```text
+PYTHONPATH=src python -m pytest tests/test_behavior_correlation.py tests/test_live_pipeline.py tests/test_evidence_traceability.py tests/test_event_features.py tests/test_telemetry_features.py -q
+34 passed
+
+PYTHONPATH=src python -m pytest -q
+90 passed
+
+python -m compileall -q collector schema src scripts tests
+git diff --check
+passed
+```
+
+The tests and compile checks ran against the existing working tree without
+loading or attaching the eBPF sensor. No malware, destructive workload,
+automatic containment, MLRan live mapping, or live detection-efficacy
+measurement was performed.
+
+## Evidence web dashboard
+
+Added a minimal browser dashboard under `dashboard/web` and a read-only
+FastAPI adapter in `dashboard/api.py`. The API is a bounded JSONL reader over
+named, preconfigured sources. It does not accept arbitrary filesystem paths,
+run the detector, recompute correlation, or expose containment operations.
+
+Each configured source has a name, one of `replay`, `simulation`, or `live`
+kind, an incident JSONL path, and optionally a normalized-event JSONL path.
+When an event path is not supplied, the API derives a bounded event view from
+persisted incident trigger/supporting payloads. Malformed lines are skipped
+but counted and exposed in source status. Missing stores return an explicit
+service error.
+
+The API exposes source status, summary counts, paginated/filterable incidents,
+incident detail, correlation detail, paginated events, event detail, and a
+timestamp-basis-aware activity timeline. The React/Vite UI keeps source
+identity visible, shows detector status and `ABSTAIN`/null probability
+explicitly, renders persisted relationship records only, and displays
+supporting event IDs, schemas, feature values, limitations, and timestamp
+metadata. It is intentionally a restrained evidence console rather than a
+second detection engine.
+
+Dashboard validation:
+
+```text
+python -m pytest tests/test_dashboard_api.py -q
+3 passed
+
+cd dashboard/web
+npm test
+1 passed
+npm run build
+passed
+```
+
+The API tests verify source counts, malformed-line handling, pagination and
+filters, incident-to-event traceability, correlation schema preservation,
+explicit null success/probability values, and missing-store errors. The
+frontend build is a production Vite build. These checks validate recorded
+fixtures and UI/API behavior; they are not live-sensor validation or
+detection-efficacy measurements.
+
+## Behavioral correlation correctness audit
+
+The live collector now creates one random session identifier at process
+startup and passes a stable context of the form
+`live:<resolved-output-path>:<session-id>` to every normalized event. Thus,
+consecutive events from one live collector share a context, while two
+collector sessions using the same output path receive different contexts.
+Direct pipeline callers that omit a context receive a pipeline-instance
+context; replay callers continue to provide their explicit capture context.
+The context is not inferred from a PID or output path alone.
+
+Correlation timestamp selection is now explicitly single-basis:
+
+- If the triggering event has a valid kernel `timestamp_ns`, only events with
+  valid kernel timestamps participate, and the window is measured in
+  nanoseconds.
+- If the trigger has no valid kernel timestamp, only events using the finite
+  wall-clock/event timestamp participate, and the window is measured in
+  seconds.
+- Events using the other clock basis are excluded and a limitation records
+  that exclusion.
+- Missing, invalid, future, and out-of-window events are not silently used.
+- Out-of-order events are sorted by the selected basis and arrival sequence.
+
+Repeated source IDs are handled conservatively. An exact repeated delivery is
+ignored for feature aggregation and recorded in `duplicate_event_ids`.
+Legitimate repeated operations must have distinct source IDs and remain
+separate observations. A conflicting payload for an existing source ID is
+excluded from aggregation and recorded with the ID plus both the existing and
+conflicting bounded payloads in `conflicting_event_details`. This prevents
+silent feature inflation while preserving an audit trail.
+
+The audit tests cover stable live-session contexts, cross-session isolation,
+mixed kernel/wall-clock timestamp availability, missing and invalid timestamps,
+out-of-order ordering, exact duplicate delivery, distinct repeated operations,
+conflicting source-ID payloads, bounded state, incident persistence, and
+unchanged unavailable-detector behavior.
+
+Verified facts:
+
+- `schema-event-window-v1` and its ordered feature names were not modified.
+- No MLRan 483-feature file or schema was modified.
+- `BehaviorCorrelationEngine` output is persisted as evidence/incident
+  metadata and is not passed to the existing detector; the detector continues
+  receiving `EventWindowFeatures`.
+- The unavailable detector continues to produce
+  `malicious_probability: null`, and the policy continues to return
+  `ABSTAIN`.
+
+Remaining assumptions and limitations:
+
+- A collector session ID is process-local and intentionally not recoverable
+  across restarts; persisted contexts distinguish sessions but cannot prove
+  that two independently generated IDs refer to the same physical sensor
+  boot.
+- Kernel monotonic timestamps remain incomparable across boots or unrelated
+  sensor sessions without a valid conversion.
+- Source-ID correctness depends on the sensor or normalizer assigning stable
+  occurrence IDs. Events without IDs are not deduplicated.
+- Duplicate and conflict audit metadata is bounded by the configured event
+  retention limit; older audit details expire with bounded state.

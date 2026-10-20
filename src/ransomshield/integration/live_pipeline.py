@@ -8,6 +8,7 @@ returns ``ABSTAIN`` rather than treating missing model output as benign.
 from __future__ import annotations
 
 import time
+import uuid
 from collections import deque
 from datetime import datetime
 from dataclasses import asdict
@@ -25,6 +26,9 @@ from ransomshield.decision.policy import OperationalDecisionPolicy
 from ransomshield.storage import IncidentStore
 from ransomshield.telemetry.event_features import EventWindowFeatures, extract_event_window_features
 from ransomshield.telemetry.guardfs_features import extract_guardfs_features
+from ransomshield.telemetry.behavior_correlation import (
+    BehaviorCorrelationEngine,
+)
 from ransomshield.telemetry.process import build_process_context
 from ransomshield.telemetry.temporal import (
     extract_temporal_features,
@@ -76,6 +80,8 @@ class LiveDecisionPipeline:
         store: IncidentStore | None = None,
         window_seconds: float = 10.0,
         max_events: int = 4096,
+        correlation_engine: BehaviorCorrelationEngine | None = None,
+        source_context: str | None = None,
     ):
         if max_events <= 0:
             raise ValueError("max_events must be greater than zero")
@@ -83,6 +89,11 @@ class LiveDecisionPipeline:
         self.policy = policy or OperationalDecisionPolicy()
         self.store = store
         self.window_seconds = window_seconds
+        self.source_context = source_context or f"pipeline:{uuid.uuid4().hex}"
+        self.correlation_engine = correlation_engine or BehaviorCorrelationEngine(
+            window_seconds=window_seconds,
+            max_events=max_events,
+        )
         self.events: deque[dict[str, Any]] = deque(maxlen=max_events)
         self._records: deque[tuple[int, tuple[Any, ...], dict[str, Any]]] = deque(
             maxlen=max_events
@@ -99,9 +110,10 @@ class LiveDecisionPipeline:
         normalized_event.setdefault(
             "source_event_id", f"rs-runtime-event-{self._sequence}"
         )
-        normalized_event.setdefault("source_context", "live-pipeline")
+        normalized_event.setdefault("source_context", self.source_context)
         identity, identity_limitations = self._identity(normalized_event)
         self._append_event(identity, normalized_event)
+        correlation = self.correlation_engine.observe(normalized_event)
         events = self._causal_events(identity, self._timestamp(normalized_event))
         decision_time = self._timestamp(normalized_event)
         features = extract_event_window_features(
@@ -185,6 +197,19 @@ class LiveDecisionPipeline:
                 if prediction.malicious_probability is None
                 else "policy evaluation over validated detector output"
             ),
+            correlation_schema_id=correlation.schema_id,
+            correlation_feature_values=correlation.feature_values,
+            correlation_supporting_event_ids=correlation.supporting_event_ids,
+            correlation_relationships=tuple(
+                asdict(item) for item in correlation.relationships
+            ),
+            correlation_window_start=correlation.window_start,
+            correlation_window_end=correlation.window_end,
+            correlation_timestamp_source=correlation.timestamp_source,
+            correlation_limitations=correlation.limitations,
+            correlation_duplicate_event_ids=correlation.duplicate_event_ids,
+            correlation_conflicting_event_ids=correlation.conflicting_event_ids,
+            correlation_conflicting_event_details=correlation.conflicting_event_details,
         )
         decision = self.policy.evaluate_decision(prediction, evidence)
         if self.store is not None:
@@ -195,6 +220,7 @@ class LiveDecisionPipeline:
                 prediction,
                 evidence,
                 decision,
+                correlation,
             )
             self.store.append(self.last_record)
         else:
@@ -205,6 +231,7 @@ class LiveDecisionPipeline:
                 prediction,
                 evidence,
                 decision,
+                correlation,
             )
         return decision
 
@@ -347,6 +374,7 @@ class LiveDecisionPipeline:
         prediction: PredictionRecord,
         evidence: EvidenceRecord,
         decision: DecisionRecord,
+        correlation: Any,
     ) -> dict[str, Any]:
         return {
             "record_type": "ransomshield_incident",
@@ -382,4 +410,5 @@ class LiveDecisionPipeline:
             "prediction": asdict(prediction),
             "evidence": asdict(evidence),
             "decision": asdict(decision),
+            "correlation": correlation.to_dict(),
         }

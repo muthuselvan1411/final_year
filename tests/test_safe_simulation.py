@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 from scripts.run_safe_simulation import run_scenario
+import pytest
 
 
 def test_benign_simulation_uses_pipeline_without_filesystem_side_effects(tmp_path):
@@ -27,3 +28,10 @@ def test_synthetic_burst_is_not_reported_as_detection(tmp_path):
     assert result["observed_event_types"] == {"FILE_RENAME": 12}
     assert result["decision_counts"] == {"ABSTAIN": 12}
     assert "not ransomware execution" in result["interpretation"]
+
+
+def test_simulation_does_not_append_duplicate_incidents_on_reuse(tmp_path):
+    output = tmp_path / "repeat"
+    run_scenario("benign_file_operations", output)
+    with pytest.raises(FileExistsError):
+        run_scenario("benign_file_operations", output)

@@ -46,6 +46,17 @@ def build_evidence_record(
     source_context: str | None = None,
     detector_status: str | None = None,
     decision_basis: str | None = None,
+    correlation_schema_id: str | None = None,
+    correlation_feature_values: Mapping[str, float] | None = None,
+    correlation_supporting_event_ids: tuple[str, ...] = (),
+    correlation_relationships: tuple[Mapping[str, object], ...] = (),
+    correlation_window_start: int | float | None = None,
+    correlation_window_end: int | float | None = None,
+    correlation_timestamp_source: str | None = None,
+    correlation_limitations: tuple[str, ...] = (),
+    correlation_duplicate_event_ids: tuple[str, ...] = (),
+    correlation_conflicting_event_ids: tuple[str, ...] = (),
+    correlation_conflicting_event_details: tuple[Mapping[str, object], ...] = (),
 ) -> EvidenceRecord:
     """
     Builds a validated EvidenceRecord.
@@ -99,6 +110,17 @@ def build_evidence_record(
         source_context=source_context,
         detector_status=detector_status,
         decision_basis=decision_basis,
+        correlation_schema_id=correlation_schema_id,
+        correlation_feature_values=dict(correlation_feature_values or {}),
+        correlation_supporting_event_ids=correlation_supporting_event_ids,
+        correlation_relationships=correlation_relationships,
+        correlation_window_start=correlation_window_start,
+        correlation_window_end=correlation_window_end,
+        correlation_timestamp_source=correlation_timestamp_source,
+        correlation_limitations=correlation_limitations,
+        correlation_duplicate_event_ids=correlation_duplicate_event_ids,
+        correlation_conflicting_event_ids=correlation_conflicting_event_ids,
+        correlation_conflicting_event_details=correlation_conflicting_event_details,
     )
     validate_evidence_record(rec)
     return rec

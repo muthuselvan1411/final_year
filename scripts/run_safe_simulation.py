@@ -109,7 +109,15 @@ def run_scenario(name: str, output_dir: str | Path | None = None) -> dict[str, A
     if output_dir is not None:
         output = Path(output_dir)
         output.mkdir(parents=True, exist_ok=True)
-        store = IncidentStore(output / "incidents.jsonl")
+        incident_path = output / "incidents.jsonl"
+        summary_path = output / "simulation_summary.json"
+        existing = [path for path in (incident_path, summary_path) if path.exists()]
+        if existing:
+            raise FileExistsError(
+                "Refusing to append to existing simulation output: "
+                + ", ".join(str(path) for path in existing)
+            )
+        store = IncidentStore(incident_path)
     pipeline = LiveDecisionPipeline(store=store)
     decision_rows = []
     for event in normalized_events:

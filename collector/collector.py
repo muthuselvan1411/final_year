@@ -14,6 +14,7 @@ import time
 import signal
 import argparse
 import subprocess
+import uuid
 from pathlib import Path
 
 # Add project root to python path
@@ -25,6 +26,14 @@ from ransomshield.integration import LiveDecisionPipeline
 from ransomshield.storage import IncidentStore
 from rich.live import Live
 from rich.console import Console
+
+
+def build_live_source_context(output_path: Path, session_id: str) -> str:
+    """Scope live event identities to one collector/sensor session."""
+    if not session_id or not session_id.strip():
+        raise ValueError("session_id must be non-empty")
+    return f"live:{output_path.resolve()}:{session_id}"
+
 
 def main():
     parser = argparse.ArgumentParser(description="RansomShield eBPF Collector")
@@ -76,6 +85,8 @@ def main():
         cmd.extend(["--target-pid", str(args.target_pid)])
 
     normalizer = EventNormalizer(compute_entropy=not args.no_entropy)
+    live_session_id = uuid.uuid4().hex
+    live_source_context = build_live_source_context(out_path, live_session_id)
     dashboard = (
         TelemetryDashboard(
             watch_dir=args.watch_dir,
@@ -130,7 +141,7 @@ def main():
                     raw_data = json.loads(line)
                     normalized = normalizer.normalize(
                         raw_data,
-                        source_context=f"live:{out_path.resolve()}",
+                        source_context=live_source_context,
                         occurrence_index=line_number,
                     )
                     # Write to dataset file
@@ -154,7 +165,7 @@ def main():
                 raw_data = json.loads(line)
                 normalized = normalizer.normalize(
                     raw_data,
-                    source_context=f"live:{out_path.resolve()}",
+                    source_context=live_source_context,
                     occurrence_index=line_number,
                 )
                 out_file.write(json.dumps(normalized) + "\n")

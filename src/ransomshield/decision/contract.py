@@ -73,6 +73,17 @@ class EvidenceRecord:
     source_context: str | None = None
     detector_status: str | None = None
     decision_basis: str | None = None
+    correlation_schema_id: str | None = None
+    correlation_feature_values: Mapping[str, float] = field(default_factory=dict)
+    correlation_supporting_event_ids: Tuple[str, ...] = ()
+    correlation_relationships: Tuple[Mapping[str, object], ...] = ()
+    correlation_window_start: int | float | None = None
+    correlation_window_end: int | float | None = None
+    correlation_timestamp_source: str | None = None
+    correlation_limitations: Tuple[str, ...] = ()
+    correlation_duplicate_event_ids: Tuple[str, ...] = ()
+    correlation_conflicting_event_ids: Tuple[str, ...] = ()
+    correlation_conflicting_event_details: Tuple[Mapping[str, object], ...] = ()
 
 
 @dataclass(frozen=True)

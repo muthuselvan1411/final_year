@@ -42,16 +42,67 @@ PYTHONPATH=src python3 scripts/run_safe_simulation.py \
 ```
 
 These scenarios use in-memory events only. They produce `ABSTAIN` while the
-validated detector is unavailable.
+validated detector is unavailable. A simulation output directory must be new;
+the script refuses to append to an existing `incidents.jsonl` or summary. This
+prevents a repeated four-event run from appearing as eight incident rows while
+preserving legitimate observations with distinct source IDs.
 
-### Dashboard and API status
+### Evidence web dashboard
 
-The current dashboard is a local Rich terminal dashboard, not a web frontend.
-It displays observed telemetry activity and explicitly labels its activity
-heuristics as advisory; it does not display a validated ransomware probability.
-No HTTP API or browser dashboard exists in the current repository, so API and
-frontend requirements remain future work rather than an unvalidated second
-service.
+The repository also includes a minimal, read-only browser dashboard. It reads
+persisted JSONL records through FastAPI; it does not run detection or
+reconstruct behavioral correlation in the browser.
+
+Configure named sources with a semicolon-separated environment variable:
+
+```powershell
+$env:RSHIELD_DASHBOARD_SOURCES = "replay|replay|C:\data\replay\incidents.jsonl|C:\data\replay\events.jsonl;simulation|simulation|C:\data\simulation\incidents.jsonl"
+python dashboard/run_api.py
+```
+
+The source format is:
+
+```text
+name|kind|incidents_jsonl[|normalized_events_jsonl]
+```
+
+`kind` must be `replay`, `simulation`, or `live`. The API never accepts an
+arbitrary filesystem path from a request. It scans configured stores with a
+bounded record limit and skips malformed JSONL lines while reporting the
+malformed count.
+
+API endpoints:
+
+- `GET /api/sources`
+- `GET /api/summary?source=<name>`
+- `GET /api/incidents?source=<name>&offset=0&limit=50`
+- `GET /api/incidents/{index}?source=<name>`
+- `GET /api/incidents/{index}/correlation?source=<name>`
+- `GET /api/events?source=<name>&offset=0&limit=50`
+- `GET /api/events/{source_event_id}?source=<name>`
+- `GET /api/timeline?source=<name>`
+- `POST /api/test-simulation` (runs the existing harmless in-memory scenario;
+  it does not write sensor, incident, or operating-system state)
+
+Run the frontend:
+
+```powershell
+cd dashboard\web
+npm install
+npm run dev
+```
+
+The default frontend API target is `http://localhost:8000`; set
+`VITE_API_URL` when the API is hosted elsewhere. The UI labels replay,
+simulation, and live sources separately, shows explicit `ABSTAIN` and null
+probability states, and links incident evidence to persisted event IDs. The
+navigation is organized as **Live Monitoring**, **Behavioral Analysis**,
+**Incident Investigation**, and **Event Explorer**. Behavioral Analysis renders
+only persisted `schema-behavior-correlation-v1` relationships, features,
+availability masks, timestamp basis, and supporting IDs. **Run safe test**
+exercises the same normalizer/pipeline/correlation path in memory and reports
+the resulting four events and four `ABSTAIN` decisions; it is not a detector
+test or efficacy measurement.
 
 **Status:** design and reproducibility package; no RansomShield experiment has been run.  
 **Purpose:** a journal-style, auditable research plan for behavioral ransomware detection (MLRan) with a *separate* IoT botnet extension (N-BaIoT: Mirai/BASHLITE). This is not a claim that the two datasets are interoperable or that any accuracy has been reproduced.
