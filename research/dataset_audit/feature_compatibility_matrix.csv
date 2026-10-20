@@ -1,0 +1,31 @@
+dataset,field_or_feature,definition,data_source,available_in_current_sensor,compatibility_status,required_instrumentation,transformation,limitations,evidence_reference
+RansomShield live,event_type,Operation category,ebpf event hooks,EXACT,EXACT,None,none,Only implemented hook set,ebpf/event.h
+RansomShield live,timestamp,Event time,loader receipt clock,PARTIAL,PARTIAL,Use kernel timestamp_ns,convert monotonic to trace epoch,Current JSON uses user-space receipt time,ebpf/sensor_loader.c
+RansomShield live,pid,Process identifier,eBPF event_t,EXACT,EXACT,None,none,PID reuse and lifetime not solved,ebpf/event.h
+RansomShield live,ppid,Parent process identifier,eBPF task parent,EXACT,EXACT,None,none,Not durable process identity,ebpf/sensor.bpf.c
+RansomShield live,process_instance,Stable execution identity,not emitted,NO,UNAVAILABLE,Add start-time/cgroup/container identity,None,PID alone is insufficient,src/ransomshield/telemetry/process.py
+RansomShield live,process/exe,Command and executable,enrichment plus comm,PARTIAL,MAPPABLE,Record exec/lifetime metadata,join by process identity,/proc/exe may be unavailable,collector/normalizer.py
+RansomShield live,path,File target path,eBPF event_t,EXACT,EXACT,None,none,Fixed buffer length,ebpf/event.h
+RansomShield live,operation_success,True operation outcome,loader/normalizer,NO,UNAVAILABLE,Return-value-aware hooks,derive from syscall return,Current value is assumed true,ebpf/sensor_loader.c
+RansomShield live,bytes_written,I/O bytes,event_t bytes,PARTIAL,MAPPABLE,Validate hook byte semantics,aggregate by causal window,Hook coverage and write semantics require validation,ebpf/event.h
+RansomShield live,rename_delete,File rename/delete,event hooks,EXACT,EXACT,None,aggregate,No independent labels,ebpf/event.h
+RansomShield live,file_entropy,Sampled content entropy,user-space normalizer,PARTIAL,PARTIAL,Measure defined sample policy,record unavailable/error separately,Failure currently becomes 0.0,collector/normalizer.py
+RansomShield live,network_endpoint,IPv4 destination and port,connect hook,PARTIAL,PARTIAL,IPv6 and outcome hooks,normalize address/protocol,No byte counts or reliable outcome,ebpf/sensor_loader.c
+EMW-DS,syscall_count,Count per run and syscall,public CSV,YES,PARTIAL,none,Map syscall counts to broad operations,No paths/PID/PPID/timestamps in documented CSV,EMW README
+EMW-DS,raw_syscall_sequence,Ordered syscall events,compressed traces,UNKNOWN,UNKNOWN,none,inspect archive,Archive not inspected; 36 GB expanded,EMW README
+Linux Ransomware Analysis,file_operations,Dynamic file behavior,ELFEN Reports JSON,YES,MAPPABLE,adapter to normalized events,parse func/args/ret and retain raw provenance,Paths are embedded in args and operation semantics vary,Zenodo 19617322 plus local schema inspection
+Linux Ransomware Analysis,process_operations,Process operation trace,ProcOPS JSON,YES,PARTIAL,adapter and group mapping,parse ts/pid/procname/func/args/ret,No PPID or stable process-instance field,Zenodo 19617322 plus local schema inspection
+Linux Ransomware Analysis,timestamp,Operation timestamp,JSON ts field,PARTIAL,PARTIAL,none for relative windows,parse UTC time-of-day and preserve task date,No date in operation ts and file order is not monotonic,local schema inspection
+Linux Ransomware Analysis,execution_id,Independent execution grouping,submission_uuid and sample sha256,YES,MAPPABLE,none,group by submission_uuid and sample hash,31 paired ProcOPS and 32 Reports; independence still requires protocol,local acquisition manifest
+Linux Ransomware Analysis,benign_label,Benign comparison class,archive family folders,NO,UNAVAILABLE,collect benign traces separately,None,Ransomware-only archive,local schema inspection
+EMW-DS,run_level_label,CLEAN/INFECTED per run,ebpf_malware.csv,YES,EXACT,None,none,No ransomware-family specificity in CSV,local EMW inspection
+EMW-DS,syscall_count,Count per run and syscall,ebpf_malware.csv,YES,EXACT,None,map only to run-level syscall features,No event ordering/paths/PID/PPID/timestamps,local EMW inspection
+EMW-DS,event_window,Ordered event window,ebpf_malware.csv,NO,UNAVAILABLE,download raw traces and inspect schema,None,Published CSV is aggregated counts,local EMW inspection
+EMW-DS,process_context,PID/PPID/process identity,ebpf_malware.csv,NO,UNAVAILABLE,raw trace instrumentation,None,No process fields in CSV,local EMW inspection
+SILRAD,sysmon_event,Windows host event,Sysmon CSV/ZIP,PARTIAL,PARTIAL,none,documented replay adapter,Windows semantics differ from Linux eBPF,Zenodo 17104902
+SILRAD,timestamp,Windows event timestamp,Sysmon,PARTIAL,PARTIAL,inspect schema,normalize timezone/units,Ordering and timezone unverified,Zenodo 17104902
+SILRAD,pid_ppid,Process identifiers,Sysmon,PARTIAL,PARTIAL,none,field mapping,Process instance semantics unverified,Zenodo 17104902
+SILRAD,registry,Registry operation,Windows Sysmon,NO,UNAVAILABLE,Linux equivalent is not registry,do not fabricate,None on Linux,Zenodo 17104902
+MedBIoT,network_flow,Packet capture and labels,PCAP,YES,PARTIAL,Separate network pipeline,extract flows,No host PID/file telemetry,MedBIoT official page
+RanSAP,storage_io,ATA read/write timestamp/LBA/size/entropy,hypervisor,PARTIAL,PARTIAL,none,separate storage adapter,No OS process attribution,RanSAP README
+MLRan,483_features,Selected tabular host features,local CSV,NO,UNAVAILABLE,Separate compatible model,None,No event-to-feature mapping validated,results/event_level_data_audit_v2/audit.json

@@ -1,0 +1,36 @@
+{
+  "audit_date": "2026-10-19",
+  "linux_ransomware_analysis": {
+    "source": "https://zenodo.org/records/19617322",
+    "file": "Linux Ransomware Analysis.zip",
+    "size_bytes": 1772573,
+    "zenodo_md5": "7467737f1adcba777c7f6a2e31460be0",
+    "local_sha256": "c3cfb1c4c284e14bb512e3078030d6cda3e828b45b15cf36cbcd1670e26a072",
+    "local_path": "research/dataset_audit/Linux Ransomware Analysis.zip",
+    "extracted_json_files": 63,
+    "report_json_files": 32,
+    "procops_json_files": 31,
+    "non_json_files": 0,
+    "families": 16,
+    "report_submission_uuids": 32,
+    "procops_submission_uuids": 31,
+    "paired_submission_uuids": 31,
+    "report_only_submission_uuids": 1,
+    "status": "inspected_json_only"
+  },
+  "emw_ds_csv": {
+    "source": "https://github.com/Javadkamyabi/ebpf-malware-dataset",
+    "file": "ebpf_malware.csv",
+    "size_bytes": 1664879,
+    "local_sha256": "74a8125ed1693ff595d1042ac84728bab3c9e1144942abbb9675ca892e89dfbc",
+    "local_path": "research/dataset_audit/ebpf_malware.csv",
+    "rows": 2937,
+    "columns": 218,
+    "unique_run_ids": 2937,
+    "labels": {
+      "CLEAN": 2000,
+      "INFECTED": 937
+    },
+    "status": "inspected_csv_only"
+  }
+}

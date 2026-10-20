@@ -1,0 +1,182 @@
+{
+  "result_category": "functional_recorded_replay_only",
+  "not_detection_performance": true,
+  "reason": "Controlled benign and synthetic-ransomware workload traces; no independent real-world benchmark.",
+  "probability_source": "companion result max_threat_assessment.confidence; not recalculated from each event",
+  "sample_count": 3,
+  "diagnostic_summary": {
+    "probability_range": [
+      0.25,
+      0.75
+    ],
+    "temporal_consistency_by_trace": {
+      "benign_events.jsonl": [
+        0.5,
+        0.25
+      ],
+      "ransomware_events.jsonl": [
+        0.25
+      ]
+    },
+    "process_availability_by_trace": {
+      "benign_events.jsonl": [
+        "measured",
+        "measured"
+      ],
+      "ransomware_events.jsonl": [
+        "insufficient"
+      ]
+    },
+    "action_columns": {
+      "probability_only": "probability_only_action",
+      "temporal_only": "enhanced_action",
+      "process_only": "process_only_action",
+      "temporal_and_process": "temporal_process_action"
+    }
+  },
+  "probability_only": {
+    "action_counts": {
+      "NO_ALERT": 2,
+      "MONITOR": 0,
+      "ALERT": 1,
+      "CONTAINMENT_RECOMMENDED": 0,
+      "ABSTAIN": 0
+    },
+    "malicious_by_action": {
+      "NO_ALERT": 0,
+      "MONITOR": 0,
+      "ALERT": 1,
+      "CONTAINMENT_RECOMMENDED": 0,
+      "ABSTAIN": 0
+    },
+    "benign_by_action": {
+      "NO_ALERT": 2,
+      "MONITOR": 0,
+      "ALERT": 0,
+      "CONTAINMENT_RECOMMENDED": 0,
+      "ABSTAIN": 0
+    },
+    "containment_recommendation_precision": 0.0,
+    "containment_recommendation_recall": 0.0,
+    "recall_at_alert_or_higher": 1.0,
+    "recall_at_containment": 0.0,
+    "benign_escalated_to_alert_or_higher": 0,
+    "benign_escalated_to_containment": 0
+  },
+  "enhanced_evidence": {
+    "action_counts": {
+      "NO_ALERT": 2,
+      "MONITOR": 0,
+      "ALERT": 1,
+      "CONTAINMENT_RECOMMENDED": 0,
+      "ABSTAIN": 0
+    },
+    "malicious_by_action": {
+      "NO_ALERT": 0,
+      "MONITOR": 0,
+      "ALERT": 1,
+      "CONTAINMENT_RECOMMENDED": 0,
+      "ABSTAIN": 0
+    },
+    "benign_by_action": {
+      "NO_ALERT": 2,
+      "MONITOR": 0,
+      "ALERT": 0,
+      "CONTAINMENT_RECOMMENDED": 0,
+      "ABSTAIN": 0
+    },
+    "containment_recommendation_precision": 0.0,
+    "containment_recommendation_recall": 0.0,
+    "recall_at_alert_or_higher": 1.0,
+    "recall_at_containment": 0.0,
+    "benign_escalated_to_alert_or_higher": 0,
+    "benign_escalated_to_containment": 0
+  },
+  "temporal_only": {
+    "action_counts": {
+      "NO_ALERT": 2,
+      "MONITOR": 0,
+      "ALERT": 1,
+      "CONTAINMENT_RECOMMENDED": 0,
+      "ABSTAIN": 0
+    },
+    "malicious_by_action": {
+      "NO_ALERT": 0,
+      "MONITOR": 0,
+      "ALERT": 1,
+      "CONTAINMENT_RECOMMENDED": 0,
+      "ABSTAIN": 0
+    },
+    "benign_by_action": {
+      "NO_ALERT": 2,
+      "MONITOR": 0,
+      "ALERT": 0,
+      "CONTAINMENT_RECOMMENDED": 0,
+      "ABSTAIN": 0
+    },
+    "containment_recommendation_precision": 0.0,
+    "containment_recommendation_recall": 0.0,
+    "recall_at_alert_or_higher": 1.0,
+    "recall_at_containment": 0.0,
+    "benign_escalated_to_alert_or_higher": 0,
+    "benign_escalated_to_containment": 0
+  },
+  "process_only": {
+    "action_counts": {
+      "NO_ALERT": 2,
+      "MONITOR": 0,
+      "ALERT": 1,
+      "CONTAINMENT_RECOMMENDED": 0,
+      "ABSTAIN": 0
+    },
+    "malicious_by_action": {
+      "NO_ALERT": 0,
+      "MONITOR": 0,
+      "ALERT": 1,
+      "CONTAINMENT_RECOMMENDED": 0,
+      "ABSTAIN": 0
+    },
+    "benign_by_action": {
+      "NO_ALERT": 2,
+      "MONITOR": 0,
+      "ALERT": 0,
+      "CONTAINMENT_RECOMMENDED": 0,
+      "ABSTAIN": 0
+    },
+    "containment_recommendation_precision": 0.0,
+    "containment_recommendation_recall": 0.0,
+    "recall_at_alert_or_higher": 1.0,
+    "recall_at_containment": 0.0,
+    "benign_escalated_to_alert_or_higher": 0,
+    "benign_escalated_to_containment": 0
+  },
+  "temporal_and_process": {
+    "action_counts": {
+      "NO_ALERT": 2,
+      "MONITOR": 0,
+      "ALERT": 1,
+      "CONTAINMENT_RECOMMENDED": 0,
+      "ABSTAIN": 0
+    },
+    "malicious_by_action": {
+      "NO_ALERT": 0,
+      "MONITOR": 0,
+      "ALERT": 1,
+      "CONTAINMENT_RECOMMENDED": 0,
+      "ABSTAIN": 0
+    },
+    "benign_by_action": {
+      "NO_ALERT": 2,
+      "MONITOR": 0,
+      "ALERT": 0,
+      "CONTAINMENT_RECOMMENDED": 0,
+      "ABSTAIN": 0
+    },
+    "containment_recommendation_precision": 0.0,
+    "containment_recommendation_recall": 0.0,
+    "recall_at_alert_or_higher": 1.0,
+    "recall_at_containment": 0.0,
+    "benign_escalated_to_alert_or_higher": 0,
+    "benign_escalated_to_containment": 0
+  }
+}

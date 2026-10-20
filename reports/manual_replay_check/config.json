@@ -1,0 +1,20 @@
+{
+  "traces": [
+    "datasets/benign_events.jsonl",
+    "datasets/ransomware_events.jsonl"
+  ],
+  "policies": [
+    "probability_only",
+    "temporal_only",
+    "process_only",
+    "temporal_and_process"
+  ],
+  "ablation_modes": [
+    "probability_only",
+    "temporal_only",
+    "process_only",
+    "temporal_and_process"
+  ],
+  "containment_is_advisory_only": true,
+  "labels_used_only_for_reporting": true
+}

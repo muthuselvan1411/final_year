@@ -21,6 +21,8 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from collector.normalizer import EventNormalizer
 from collector.dashboard import TelemetryDashboard
+from ransomshield.integration import LiveDecisionPipeline
+from ransomshield.storage import IncidentStore
 from rich.live import Live
 from rich.console import Console
 
@@ -38,6 +40,11 @@ def main():
                         help="Optional PID filter (0 = all processes)")
     parser.add_argument("--no-entropy", action="store_true",
                         help="Disable file Shannon entropy calculation")
+    parser.add_argument(
+        "--decision-output",
+        default=None,
+        help="Optional JSONL incident output. Enables safe advisory policy evaluation; unavailable models ABSTAIN.",
+    )
     args = parser.parse_args()
 
     # Ensure output directory exists
@@ -70,6 +77,11 @@ def main():
 
     normalizer = EventNormalizer(compute_entropy=not args.no_entropy)
     dashboard = TelemetryDashboard(watch_dir=args.watch_dir) if args.dashboard else None
+    pipeline = (
+        LiveDecisionPipeline(store=IncidentStore(args.decision_output))
+        if args.decision_output
+        else None
+    )
 
     # Open output file
     out_file = open(out_path, "a", encoding="utf-8")
@@ -113,6 +125,8 @@ def main():
                     # Write to dataset file
                     out_file.write(json.dumps(normalized) + "\n")
                     out_file.flush()
+                    if pipeline is not None:
+                        pipeline.process_event(normalized)
 
                     # Update UI
                     dashboard.push_event(normalized)
@@ -129,6 +143,8 @@ def main():
                 normalized = normalizer.normalize(raw_data)
                 out_file.write(json.dumps(normalized) + "\n")
                 out_file.flush()
+                if pipeline is not None:
+                    pipeline.process_event(normalized)
                 print(json.dumps(normalized))
             except json.JSONDecodeError:
                 continue

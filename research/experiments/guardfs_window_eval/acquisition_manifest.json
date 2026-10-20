@@ -1,0 +1,60 @@
+{
+  "audit_date": "2026-10-20",
+  "decision": "no_go_standalone_evaluation",
+  "paper_url": "https://arxiv.org/html/2401.17917v1",
+  "resource_repository": "https://github.com/Cyber-Tracer/guardfs",
+  "model_data_repository": "https://github.com/Cyber-Tracer/FS-MTD-Detection",
+  "release_url": "https://github.com/Cyber-Tracer/FS-MTD-Detection/releases/tag/MA_Robert_Oles",
+  "archive": {
+    "name": "MA_collected_data_analysis.zip",
+    "size_bytes": 135776262,
+    "sha256": "c3a56b1d971eab007a80a5059169fab97c55e08e42c9147e1f2e3ec1561aa558",
+    "license_status": "no_separate_dataset_license_verified",
+    "inspection": "listing_and_selected_csv_schema_only"
+  },
+  "raw_logs": [
+    {
+      "name": "benign.csv",
+      "rows_excluding_header": 293279,
+      "unique_pid": 10268,
+      "timestamp_min": 73,
+      "timestamp_max": 10964,
+      "operations": {"write": 278193, "read": 15086},
+      "fields": ["pid", "entropy", "op", "ext", "timestamp"]
+    },
+    {
+      "name": "DarkRadiation.csv",
+      "rows_excluding_header": 1360598,
+      "unique_pid": 8490,
+      "timestamp_min": 109,
+      "timestamp_max": 2813,
+      "timestamp_decreases": 2154,
+      "operations": {"write": 1242883, "read": 117715},
+      "fields": ["pid", "entropy", "op", "ext", "filename", "timestamp"]
+    },
+    {
+      "name": "Ransomware_PoC.csv",
+      "rows_excluding_header": 777833,
+      "unique_pid": 1,
+      "timestamp_min": 6,
+      "timestamp_max": 1932,
+      "operations": {"write": 446362, "read": 331471},
+      "fields": ["pid", "entropy", "op", "ext", "filename", "timestamp"]
+    },
+    {
+      "name": "roar.csv",
+      "rows_excluding_header": 7055,
+      "unique_pid": 1,
+      "timestamp_min": 28,
+      "timestamp_max": 5638,
+      "operations": {"write": 4051, "read": 3004},
+      "fields": ["pid", "entropy", "op", "ext", "filename", "timestamp"]
+    }
+  ],
+  "experiment": {
+    "ran": false,
+    "reason": "No execution identifiers or sufficient independent groups; random-window metrics would leak source-log identity.",
+    "models": [],
+    "metrics": []
+  }
+}
